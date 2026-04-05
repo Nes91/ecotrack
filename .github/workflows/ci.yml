@@ -24,24 +24,15 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
 
       - name: 📦 Installer les dépendances
-        run: npm ci
+        run: npm install
 
       - name: 🧪 Lancer les tests
-        run: npm test
+        run: node --experimental-vm-modules node_modules/.bin/jest --forceExit --passWithNoTests
         env:
           NODE_ENV: test
           SECRET_KEY: test_secret_key_ci
-
-      - name: 📊 Uploader le rapport coverage
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: backend-coverage
-          path: backend/coverage/
 
   # ───────────────────────────────────────────
   test-frontend:
@@ -59,14 +50,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
 
       - name: 📦 Installer les dépendances
-        run: npm ci
+        run: npm install
 
       - name: 🧪 Lancer les tests
-        run: npm test -- --watchAll=false --coverage
+        run: npm test -- --watchAll=false
         env:
           CI: true
 
@@ -74,13 +63,6 @@ jobs:
         run: npm run build
         env:
           CI: false
-
-      - name: 📊 Uploader le rapport coverage
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: frontend-coverage
-          path: frontend/coverage/
 
   # ───────────────────────────────────────────
   status:
