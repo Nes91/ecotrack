@@ -6,9 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
 
-  # ───────────────────────────────────────────
   test-backend:
     name: 🧪 Tests Backend (Jest)
     runs-on: ubuntu-latest
@@ -19,11 +21,13 @@ jobs:
     steps:
       - name: 📥 Checkout du code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
-      - name: ⚙️ Setup Node.js 20
+      - name: ⚙️ Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: 📦 Installer les dépendances
         run: npm install
@@ -34,7 +38,6 @@ jobs:
           NODE_ENV: test
           SECRET_KEY: test_secret_key_ci
 
-  # ───────────────────────────────────────────
   test-frontend:
     name: 🎨 Tests Frontend (React Testing Library)
     runs-on: ubuntu-latest
@@ -45,11 +48,13 @@ jobs:
     steps:
       - name: 📥 Checkout du code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
-      - name: ⚙️ Setup Node.js 20
+      - name: ⚙️ Setup Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: 📦 Installer les dépendances
         run: npm install
@@ -64,7 +69,6 @@ jobs:
         env:
           CI: false
 
-  # ───────────────────────────────────────────
   status:
     name: ✅ CI Terminé
     runs-on: ubuntu-latest
@@ -73,9 +77,5 @@ jobs:
     steps:
       - name: 📋 Résumé
         run: |
-          echo "================================"
-          echo "  ECOTRACK CI - Résumé"
-          echo "================================"
           echo "Backend  : ${{ needs.test-backend.result }}"
           echo "Frontend : ${{ needs.test-frontend.result }}"
-          echo "================================"
