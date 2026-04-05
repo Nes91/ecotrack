@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               Int            @id @default(autoincrement())
+  email            String         @unique
+  password         String
+  firstName        String
+  lastName         String
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  address          String?
+  lat              Float?
+  lng              Float?
+  role             Role           @default(CITIZEN)
+  phone            String?
+  bio              String?
+  avatar           String?
+  twoFactorSecret  String?        @db.VarChar(255)
+  twoFactorEnabled Boolean?       @default(false)
+  gamifications    Gamification[]
+  reports          Report[]  @relation("UserReports")       // ✅ renommer
+  assignedReports  Report[]  @relation("AssignedReports")   // ✅ NOUVEAU
+  routes           Route[]
+  agentMissions   Mission[] @relation("AgentMissions")
+  adminMissions   Mission[] @relation("AdminMissions")
+}
+
+model Mission {
+  id          Int           @id @default(autoincrement())
+  title       String
+  description String?
+  status      MissionStatus @default(PENDING)
+  agentId     Int
+  adminId     Int
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  agent       User          @relation("AgentMissions", fields: [agentId], references: [id])
+  admin       User          @relation("AdminMissions", fields: [adminId], references: [id])
+}
+
+enum MissionStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+}
+
+model Report {
+  id           Int        @id @default(autoincrement())
+  type         String
+  comment      String?
+  containerId  Int?
+  userId       Int?
+  createdAt    DateTime   @default(now())
+  lat          Float?
+  lng          Float?
+  photoUrl     String?
+  status       String?    @default("PENDING") @db.VarChar(50)
+  lieu         String?                          // ✅ NOUVEAU : adresse textuelle
+  assignedToId Int?                             // ✅ NOUVEAU : agent assigné
+
+  user        User?      @relation("UserReports", fields: [userId], references: [id], onDelete: Cascade)
+  assignedTo  User?      @relation("AssignedReports", fields: [assignedToId], references: [id]) // ✅ NOUVEAU
+  container   Container? @relation(fields: [containerId], references: [id], onDelete: Cascade)
+}
+
+model Gamification {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  points    Int      @default(0)
+  level     Int      @default(1)
+  badges    String[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum Role {
+  CITIZEN
+  AGENT
+  MANAGER
+  ADMIN
+}
+
+enum ReportStatus {
+  PENDING
+  VALIDATED
+  REJECTED
+}
+
+enum ContainerStatus {
+  PLEIN
+  VIDE
+}
+
+// 1. Ajoute les champs manquants à Route
+model Route {
+  id              Int         @id @default(autoincrement())
+  agentId         Int
+  name            String      @default("Route sans nom")
+  createdAt       DateTime    @default(now())
+  endTime         DateTime?
+  startTime       DateTime?
+  updatedAt       DateTime    @updatedAt
+  totalDistanceKm Float?      // ← NOUVEAU : distance totale calculée par le TSP
+  improvement     String?     // ← NOUVEAU : ex: "18.5%" de gain vs itinéraire initial
+  fillThreshold   Int         @default(70) // ← NOUVEAU : seuil utilisé pour filtrer
+  containersCount Int         @default(0)
+  status          RouteStatus @default(PENDING) // ← NOUVEAU : état de la tournée
+
+  containers Container[]
+  stops      RouteStop[] // ← NOUVEAU : étapes ordonnées
+agent     User       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  @@map("routes")
+}
+
+
+// 2. NOUVEAU modèle : étapes ordonnées d'une tournée
+model RouteStop {
+  id                   Int       @id @default(autoincrement())
+  order                Int       // Ordre de passage : 1, 2, 3...
+  distanceFromPrevious Float     @default(0) // Distance depuis l'étape précédente
+  collectedAt          DateTime? // Rempli quand l'agent valide la collecte
+
+  route       Route     @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  routeId     Int
+  container   Container @relation(fields: [containerId], references: [id])
+  containerId Int
+  @@map("route_stops")
+}
+
+// 3. NOUVEAU enum pour le statut de la tournée
+enum RouteStatus {
+  PENDING
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+}
+
+// 4. Ajoute la relation inverse dans Container
+model Container {
+  id        Int      @id @default(autoincrement())
+  type      String
+  capacity  Float?
+  fillLevel Float?
+  zone      String?
+  routeId   Int?
+  createdAt DateTime @default(now())
+  latitude  Float?
+  longitude Float?
+
+  route      Route?      @relation(fields: [routeId], references: [id])
+  reports    Report[]
+  routeStops RouteStop[] // ← NOUVEAU : relation inverse
+}
