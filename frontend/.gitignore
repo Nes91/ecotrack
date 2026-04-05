@@ -1,0 +1,23 @@
+cat > .gitignore << 'EOF'
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment
+.env
+*/.env
+
+# Build
+frontend/build/
+backend/dist/
+
+# Uploads
+backend/uploads/
+
+# Coverage
+coverage/
+*/coverage/
+
+# Mac
+.DS_Store
+EOF
