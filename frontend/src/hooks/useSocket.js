@@ -7,9 +7,9 @@ export function useSocket(userId, role, onMessage) {
   useEffect(() => {
     if (!userId) return;
 
-    socketRef.current = io("http://localhost:8000", {
-      transports: ["websocket"],
-    });
+socketRef.current = io(process.env.REACT_APP_API_URL, {
+  transports: ['websocket', 'polling'],
+});
 
     socketRef.current.on("connect", () => {
       // Envoie userId ET role pour que le serveur puisse retrouver le socket de l'agent

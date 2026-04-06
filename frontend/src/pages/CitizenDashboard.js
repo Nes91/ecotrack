@@ -420,7 +420,7 @@ function SignalementCard({ signalement, isEditing, editForm, setEditForm, onEdit
           {signalement.photoUrl && (
             <div style={styles.imageWrapper}>
               <img
-                src={`http://localhost:8000${signalement.photoUrl}`}
+                src={`${process.env.REACT_APP_API_URL}${signalement.photoUrl}`}
                 alt="signalement"
                 style={styles.signalementImage}
               />
