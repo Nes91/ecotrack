@@ -13,6 +13,7 @@ import jwt from 'jsonwebtoken';
 import speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
 
+
 import { createUserSchema, updateUserSchema } from './validator/userValidator.js';
 import { createContainerSchema, updateContainerSchema } from './validator/containerValidator.js';
 import { createReportSchema } from './validator/reportValidator.js';
@@ -20,6 +21,11 @@ import { createRouteSchema } from './validator/routeValidator.js';
 import { optimizeRoute } from './services/routeOptimizer.js';
 
 const app = express();
+// Autoriser uniquement ton front Vercel
+app.use(cors({
+  origin: 'https://ecotrack-five.vercel.app', // URL exacte du front
+  credentials: true // si tu envoies cookies ou sessions
+}));
 export const prisma = new PrismaClient();
 const SECRET_KEY = process.env.SECRET_KEY || 'secret';
 const VALID_ROLES = ['ADMIN', 'MANAGER', 'AGENT', 'CITIZEN'];
