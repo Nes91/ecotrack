@@ -28,9 +28,9 @@ const cors = require('cors');
 const allowedOrigins = ['https://ecotrack-five.vercel.app', 'http://localhost:3000'];
 
 app.use(cors({
-  origin: 'https://ecotrack-five.vercel.app', // autoriser ton front
-  methods: ['GET','POST','PUT','DELETE'],
-  credentials: true // si tu gères les cookies
+  origin: 'https://ecotrack-five.vercel.app', // ton front
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  credentials: true
 }));
 export const prisma = new PrismaClient();
 const SECRET_KEY = process.env.SECRET_KEY || 'secret';
