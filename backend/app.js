@@ -22,9 +22,14 @@ import { optimizeRoute } from './services/routeOptimizer.js';
 
 const app = express();
 // Autoriser uniquement ton front Vercel
+// fichier serveur, par ex. index.js ou app.js
+const cors = require('cors');
+
+const allowedOrigins = ['https://ecotrack-five.vercel.app', 'http://localhost:3000'];
+
 app.use(cors({
-  origin: 'https://ecotrack-five.vercel.app', // URL exacte du front
-  credentials: true // si tu envoies cookies ou sessions
+  origin: allowedOrigins,
+  credentials: true
 }));
 export const prisma = new PrismaClient();
 const SECRET_KEY = process.env.SECRET_KEY || 'secret';
