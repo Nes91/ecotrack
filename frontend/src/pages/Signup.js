@@ -13,7 +13,7 @@ export default function Signup({ onSignupSuccess }) {
     setMessage("");
 
     try {
-      await API.post("/signup", { firstName, lastName, email, password });
+      await API.post("/auth/register", { firstName, lastName, email, password });
       // Succès → revenir au login
       onSignupSuccess();
     } catch (err) {

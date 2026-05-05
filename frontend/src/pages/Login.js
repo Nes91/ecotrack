@@ -11,8 +11,8 @@ export default function Login({ onLoginSuccess }) {
     setMessage("");
 
     try {
-      const res = await API.post("/login", { email, password });
-      localStorage.setItem("token", res.data.token);
+const res = await API.post("/auth/login", { email, password });      
+localStorage.setItem("token", res.data.token);
       onLoginSuccess(res.data);
     } catch (err) {
       setMessage(err.response?.data?.error || "Erreur lors de la connexion");
