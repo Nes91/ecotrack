@@ -6,7 +6,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from './prismaClient.js';
 import multer from 'multer';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
@@ -32,7 +32,6 @@ app.use(cors({
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
-export const prisma = new PrismaClient();
 const SECRET_KEY = process.env.SECRET_KEY || 'secret';
 const VALID_ROLES = ['ADMIN', 'MANAGER', 'AGENT', 'CITIZEN'];
 
