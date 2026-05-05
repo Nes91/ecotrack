@@ -25,9 +25,12 @@ const app = express();
 const allowedOrigins = ['https://ecotrack-five.vercel.app', 'http://localhost:3000'];
 
 app.use(cors({
-  origin: 'https://ecotrack-five.vercel.app', // ton front
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true
+  origin: [
+    'http://localhost:3000',
+    'https://ecotrack-five.vercel.app'
+  ],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 export const prisma = new PrismaClient();
 const SECRET_KEY = process.env.SECRET_KEY || 'secret';
