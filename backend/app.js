@@ -25,8 +25,12 @@ const app = express();
 const allowedOrigins = ['https://ecotrack-five.vercel.app', 'http://localhost:3000'];
 
 app.use(cors({
-  origin: 'https://ecotrack-five.vercel.app', // ton front
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  origin: [
+    'http://localhost:3000',
+    'https://ecotrack-five.vercel.app'
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
 const SECRET_KEY = process.env.SECRET_KEY || 'secret';
@@ -34,11 +38,6 @@ const VALID_ROLES = ['ADMIN', 'MANAGER', 'AGENT', 'CITIZEN'];
 
 const upload = multer({ dest: 'uploads/' });
 
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
 app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
