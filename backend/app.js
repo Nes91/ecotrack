@@ -1,174 +1,300 @@
-// backend/app.js
-// ⚠️ CE FICHIER est nécessaire pour que Jest/Supertest fonctionne.
-// Il exporte l'app Express SANS appeler app.listen().
-// Le vrai démarrage reste dans server.js.
-
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { prisma } from './prismaClient.js';
+import { PrismaClient } from '@prisma/client'; 
 import multer from 'multer';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import speakeasy from 'speakeasy';
-import QRCode from 'qrcode';
-
-
-import { createUserSchema, updateUserSchema } from './validator/userValidator.js';
-import { createContainerSchema, updateContainerSchema } from './validator/containerValidator.js';
-import { createReportSchema } from './validator/reportValidator.js';
-import { createRouteSchema } from './validator/routeValidator.js';
-import { optimizeRoute } from './services/routeOptimizer.js';
 
 const app = express();
+const prisma = new PrismaClient();
+const PORT = 8000;
+const SECRET_KEY = process.env.SECRET_KEY || 'secret';
 
-const allowedOrigins = ['https://ecotrack-five.vercel.app', 'http://localhost:3000'];
+// Configuration multer
+const upload = multer({ dest: 'uploads/' });
 
 app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'https://ecotrack-five.vercel.app'
-  ],
+  origin: ['http://localhost:3000', 'https://ecotrack-five.vercel.app'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
-const SECRET_KEY = process.env.SECRET_KEY || 'secret';
+app.use(express.json());
+app.use('/uploads', express.static('uploads')); // Servir les fichiers uploadés
+
+// ===== Rôles autorisés =====
 const VALID_ROLES = ['ADMIN', 'MANAGER', 'AGENT', 'CITIZEN'];
 
-const upload = multer({ dest: 'uploads/' });
-
-app.use(express.json());
-app.use('/uploads', express.static('uploads'));
-
-// ─── Middlewares ────────────────────────────────────────────────────────────
+// ===== Middleware : vérifie le token =====
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ error: 'Token manquant' });
 
-  const parts = authHeader.split(' ');
-  if (parts.length !== 2 || parts[0] !== 'Bearer')
-    return res.status(401).json({ error: 'Format de token invalide' });
-
+  const token = authHeader.split(' ')[1];
   try {
-    const payload = jwt.verify(parts[1], SECRET_KEY);
-    req.user = payload;
+    const payload = jwt.verify(token, SECRET_KEY);
     req.userId = payload.userId;
     req.userRole = payload.role;
     next();
   } catch {
-    return res.status(401).json({ error: 'Token invalide ou expiré' });
+    res.status(401).json({ error: 'Token invalide' });
   }
 };
 
+// ===== Middleware : vérifie le rôle =====
 const authorize = (roles) => (req, res, next) => {
-  if (!req.userRole || !roles.includes(req.userRole))
+  if (!roles.includes(req.userRole)) {
     return res.status(403).json({ error: 'Accès interdit' });
+  }
   next();
 };
 
-const validate = (schema) => (req, res, next) => {
-  const { error } = schema.validate(req.body, { abortEarly: false });
-  if (error)
-    return res.status(400).json({ message: 'Validation échouée', details: error.details.map(d => d.message) });
-  next();
-};
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTH
+// ─────────────────────────────────────────────────────────────────────────────
+app.post('/auth/register', async (req, res) => {
+  const { name, email, password } = req.body;
 
-// ─── Health check (pour les tests CI) ───────────────────────────────────────
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'ecotrack-api' });
-});
+  if (!name || !email || !password)
+    return res.status(400).json({ message: 'Tous les champs sont obligatoires' });
 
-// ─── Auth ────────────────────────────────────────────────────────────────────
-app.post('/auth/register', validate(createUserSchema), async (req, res) => {
-  const { firstName, lastName, email, password } = req.body;
+  const hashedPassword = await bcrypt.hash(password, 10);
+
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
-      data: {
-        firstName, lastName, email,
-        password: hashedPassword,
+      data: { 
+        firstName: name.split(' ')[0] || name,
+        lastName: name.split(' ')[1] || '',
+        email, 
+        password: hashedPassword, 
         role: 'CITIZEN',
-        gamifications: { create: { points: 0, level: 1, badges: [] } },
+        gamifications: {  // ← Créer la gamification en même temps
+          create: {
+            points: 0,
+            level: 1,
+            badges: []
+          }
+        }
       },
+      include: {
+        gamifications: true
+      }
     });
+
     const token = jwt.sign({ userId: user.id, role: user.role }, SECRET_KEY, { expiresIn: '7d' });
-    res.status(201).json({ token, role: user.role, id: user.id, name: `${user.firstName} ${user.lastName}` });
+
+    res.status(201).json({
+      id: user.id,
+      name: `${user.firstName} ${user.lastName}`,
+      email: user.email,
+      role: user.role,
+      token,
+    });
   } catch (err) {
-    res.status(400).json({ error: 'Email déjà utilisé ou erreur de création' });
+    console.error(err);
+    res.status(400).json({ message: 'Email déjà utilisé ou erreur de création' });
+  }
+})
+
+// Après votre route /auth/register existante (ligne ~48)
+
+// Route alternative pour l'inscription (alias de /auth/register)
+app.post('/signup', async (req, res) => {
+  const { name, email, password } = req.body;
+
+  if (!name || !email || !password)
+    return res.status(400).json({ message: 'Tous les champs sont obligatoires' });
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  try {
+    const user = await prisma.user.create({
+      data: { 
+        firstName: name.split(' ')[0] || name,
+        lastName: name.split(' ')[1] || '',
+        email, 
+        password: hashedPassword, 
+        role: 'CITIZEN',
+        gamifications: {  // 👈 Créer automatiquement la gamification
+          create: {
+            points: 0,
+            level: 1,
+            badges: []
+          }
+        }
+      },
+      include: {
+        gamifications: true
+      }
+    });
+
+    const token = jwt.sign({ userId: user.id, role: user.role }, SECRET_KEY, { expiresIn: '7d' });
+
+    res.status(201).json({
+      id: user.id,
+      name: `${user.firstName} ${user.lastName}`,
+      email: user.email,
+      role: user.role,
+      token,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ message: 'Email déjà utilisé ou erreur de création' });
   }
 });
 
 app.post('/auth/login', async (req, res) => {
   const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'Email et mot de passe requis' });
   try {
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return res.status(401).json({ error: 'Email ou mot de passe invalide' });
+    if (!user) return res.status(401).json({ message: 'Email ou mot de passe invalide' });
+
     const valid = await bcrypt.compare(password, user.password);
-    if (!valid) return res.status(401).json({ error: 'Email ou mot de passe invalide' });
-    if (user.twoFactorEnabled) {
-      const tempToken = jwt.sign({ userId: user.id, type: '2fa' }, SECRET_KEY, { expiresIn: '15m' });
-      return res.json({ requires2FA: true, tempToken });
-    }
+    if (!valid) return res.status(401).json({ message: 'Email ou mot de passe invalide' });
+
     const token = jwt.sign({ userId: user.id, role: user.role }, SECRET_KEY, { expiresIn: '7d' });
-    res.json({ token, role: user.role, id: user.id, name: `${user.firstName} ${user.lastName}` });
+
+    res.json({
+      id: user.id,
+      name: `${user.firstName} ${user.lastName}`,
+      email: user.email,
+      role: user.role,
+      token,
+    });
   } catch (err) {
-    res.status(500).json({ error: 'Erreur serveur' });
+    console.error(err);
+    res.status(500).json({ message: 'Erreur lors de la connexion' });
   }
 });
 
-app.get('/auth/me', authMiddleware, async (req, res) => {
+// ─────────────────────────────────────────────────────────────────────────────
+// PROFIL
+// ─────────────────────────────────────────────────────────────────────────────
+app.get('/profil', authMiddleware, async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({
+    const profil = await prisma.user.findUnique({
       where: { id: req.userId },
-      select: {
-        id: true, firstName: true, lastName: true, email: true,
-        role: true, createdAt: true,
-        gamifications: { select: { points: true, level: true, badges: true } },
+      include: { reports: true, routes: true, gamifications: true },
+    });
+    res.json(profil);
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur récupération profil' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AGENTS
+// ─────────────────────────────────────────────────────────────────────────────
+app.get('/agents', authMiddleware, authorize(['ADMIN']), async (req, res) => {
+  try {
+    const agents = await prisma.user.findMany({
+      where: { role: 'AGENT' },
+      select: { id: true, firstName: true, lastName: true, email: true, role: true, address: true, lat: true, lng: true },
+    });
+    res.json(agents);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur récupération agents' });
+  }
+});
+
+app.post('/agents', authMiddleware, authorize(['ADMIN']), async (req, res) => {
+  const { firstName, lastName, role, address, latitude, longitude } = req.body;
+
+  if (!firstName || !lastName || !role)
+    return res.status(400).json({ error: 'Prénom, nom et rôle sont obligatoires' });
+
+  if (!VALID_ROLES.includes(role))
+    return res.status(400).json({ error: 'Rôle invalide' });
+
+  try {
+    const tempEmail = `agent_${Date.now()}_${Math.random().toString(36).slice(2)}@temp.local`;
+    const tempPassword = await bcrypt.hash('changeme', 10);
+
+    const newUser = await prisma.user.create({
+      data: {
+        firstName,
+        lastName,
+        email: tempEmail,
+        password: tempPassword,
+        role,
+        address: address || null,
+        lat: latitude ? parseFloat(latitude) : null,
+        lng: longitude ? parseFloat(longitude) : null,
       },
     });
-    if (!user) return res.status(404).json({ error: 'Utilisateur introuvable' });
-    const gamification = user.gamifications?.[0] || { points: 0, level: 1, badges: [] };
-    res.json({ ...user, points: gamification.points, level: gamification.level, badges: gamification.badges });
-  } catch {
+
+    const { password: _, ...safe } = newUser;
+    res.status(201).json({
+      message: 'Agent créé',
+      user: safe,
+    });
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-app.put('/auth/change-password', authMiddleware, async (req, res) => {
-  const { currentPassword, newPassword } = req.body;
-  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Deux mots de passe requis' });
-  if (newPassword.length < 8) return res.status(400).json({ error: 'Au moins 8 caractères requis' });
+app.put('/agents/:id', authMiddleware, authorize(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  const { firstName, lastName, role, address, latitude, longitude } = req.body;
+
+  if (role && !VALID_ROLES.includes(role))
+    return res.status(400).json({ error: `Rôle invalide. Autorisés : ${VALID_ROLES.join(', ')}` });
+
   try {
-    const user = await prisma.user.findUnique({ where: { id: req.userId } });
-    if (!user) return res.status(404).json({ error: 'Utilisateur introuvable' });
-    const valid = await bcrypt.compare(currentPassword, user.password);
-    if (!valid) return res.status(401).json({ error: 'Mot de passe actuel incorrect' });
-    const hashed = await bcrypt.hash(newPassword, 10);
-    await prisma.user.update({ where: { id: req.userId }, data: { password: hashed } });
-    res.json({ message: 'Mot de passe modifié avec succès' });
-  } catch {
-    res.status(500).json({ error: 'Erreur serveur' });
+    const updateData = {};
+    if (firstName) updateData.firstName = firstName;
+    if (lastName) updateData.lastName = lastName;
+    if (role) updateData.role = role;
+    if (address) updateData.address = address;
+    if (latitude) updateData.lat = parseFloat(latitude);
+    if (longitude) updateData.lng = parseFloat(longitude);
+
+    const updatedAgent = await prisma.user.update({
+      where: { id: parseInt(id) },
+      data: updateData,
+    });
+    const { password: _, ...safe } = updatedAgent;
+    res.json(safe);
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: 'Erreur lors de la mise à jour' });
   }
 });
 
-// ─── Containers ──────────────────────────────────────────────────────────────
+app.delete('/agents/:id', authMiddleware, authorize(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    await prisma.user.delete({ where: { id: parseInt(id) } });
+    res.json({ message: 'Utilisateur supprimé' });
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: 'Erreur lors de la suppression' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONTAINERS
+// ─────────────────────────────────────────────────────────────────────────────
 app.get('/containers', authMiddleware, async (req, res) => {
   try {
     const containers = await prisma.container.findMany();
     res.json(containers);
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Erreur récupération containers' });
   }
 });
 
-app.post('/containers', authMiddleware, authorize(['ADMIN', 'MANAGER']), validate(createContainerSchema), async (req, res) => {
+app.post('/containers', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
   const { type, capacity, fillLevel, zone, latitude, longitude } = req.body;
   try {
     const container = await prisma.container.create({
       data: {
-        type, capacity: parseFloat(capacity),
+        type,
+        capacity: parseFloat(capacity),
         fillLevel: parseFloat(fillLevel || 0),
         zone,
         latitude: parseFloat(latitude || 48.8566),
@@ -176,168 +302,318 @@ app.post('/containers', authMiddleware, authorize(['ADMIN', 'MANAGER']), validat
       },
     });
     res.status(201).json(container);
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Erreur création container' });
   }
 });
 
-app.put('/containers/:id', authMiddleware, authorize(['ADMIN', 'MANAGER']), validate(updateContainerSchema), async (req, res) => {
-  const { id } = req.params;
-  const { type, capacity, fillLevel, zone, latitude, longitude } = req.body;
-  try {
-    const updateData = {};
-    if (type      !== undefined) updateData.type      = type;
-    if (capacity  !== undefined) updateData.capacity  = parseFloat(capacity);
-    if (fillLevel !== undefined) updateData.fillLevel = parseFloat(fillLevel);
-    if (zone      !== undefined) updateData.zone      = zone;
-    if (latitude  !== undefined) updateData.latitude  = parseFloat(latitude);
-    if (longitude !== undefined) updateData.longitude = parseFloat(longitude);
-    const updated = await prisma.container.update({ where: { id: parseInt(id) }, data: updateData });
-    res.json(updated);
-  } catch (err) {
-    if (err.code === 'P2025') return res.status(404).json({ error: 'Container introuvable' });
-    res.status(500).json({ error: 'Erreur mise à jour container' });
-  }
-});
+// ─────────────────────────────────────────────────────────────────────────────
+// SIGNALEMENTS
+// ─────────────────────────────────────────────────────────────────────────────
 
-app.delete('/containers/:id', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
-  try {
-    await prisma.container.delete({ where: { id: parseInt(req.params.id) } });
-    res.json({ message: 'Container supprimé avec succès' });
-  } catch (err) {
-    if (err.code === 'P2025') return res.status(404).json({ error: 'Container introuvable' });
-    res.status(500).json({ error: 'Erreur suppression container' });
-  }
-});
-
-// ─── Signalements ────────────────────────────────────────────────────────────
+// Route publique (sans authentification)
 app.get('/signalements/public', async (req, res) => {
   try {
-    const signalements = await prisma.report.findMany({ where: { userId: null }, orderBy: { createdAt: 'desc' } });
+    const signalements = await prisma.report.findMany({
+      where: { userId: null },
+      orderBy: { createdAt: 'desc' }
+    });
     res.json(signalements);
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Erreur récupération signalements publics' });
   }
 });
 
+// Signalement public (sans authentification)
 app.post('/signalements/public', upload.single('photo'), async (req, res) => {
   const { type, comment, lat, lng } = req.body;
   try {
     const report = await prisma.report.create({
       data: {
-        type, comment,
+        type,
+        comment,
         lat: lat ? parseFloat(lat) : null,
         lng: lng ? parseFloat(lng) : null,
         photoUrl: req.file ? `/uploads/${req.file.filename}` : null,
-        userId: null, status: 'PENDING',
-      },
+        userId: null,
+        status: 'PENDING'
+      }
     });
     res.status(201).json(report);
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Erreur création signalement public' });
   }
 });
 
-app.get('/signalements', authMiddleware, async (req, res) => {
+// Admins et Managers : voir tous les signalements
+app.get('/signalements', authMiddleware, authorize(['ADMIN', 'MANAGER', 'CITIZEN']), async (req, res) => {
   try {
-    let signalements;
-    if (req.userRole === 'CITIZEN') {
-      signalements = await prisma.report.findMany({
-        where: { userId: req.userId },
-        include: { container: { select: { id: true, type: true, zone: true } } },
-        orderBy: { createdAt: 'desc' },
-      });
-    } else {
-      signalements = await prisma.report.findMany({ orderBy: { createdAt: 'desc' } });
-    }
+    const signalements = await prisma.report.findMany({
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true } },
+        container: { select: { id: true, type: true, zone: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
     res.json(signalements);
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Erreur récupération signalements' });
   }
 });
 
-app.post('/signalements', authMiddleware, upload.single('photo'), async (req, res) => {
-  const { type, comment, containerId, lat, lng, lieu } = req.body;
-  if (!type) return res.status(400).json({ error: 'Le type est obligatoire' });
+// ─────────────────────────────────────────────────────────────────────────────
+// SIGNALEMENTS - LECTURE
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Admins et Managers : voir tous les signalements
+app.get('/signalements', authMiddleware, async (req, res) => {
   try {
-    const report = await prisma.report.create({
-      data: {
-        type, comment: comment || null,
-        lat: lat ? parseFloat(lat) : null,
-        lng: lng ? parseFloat(lng) : null,
-        lieu: lieu || null,
-        photoUrl: req.file ? `/uploads/${req.file.filename}` : null,
-        user: { connect: { id: req.userId } },
-        ...(containerId && { container: { connect: { id: parseInt(containerId) } } }),
-      },
-    });
-    res.status(201).json({ report });
+    let signalements;
+    
+    // Si CITIZEN : voir uniquement ses propres signalements
+    if (req.userRole === 'CITIZEN') {
+      signalements = await prisma.report.findMany({
+        where: { userId: req.userId },
+        include: {
+          container: { select: { id: true, type: true, zone: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    } 
+    // Si ADMIN ou MANAGER : voir tous les signalements
+    else if (req.userRole === 'ADMIN' || req.userRole === 'MANAGER') {
+      signalements = await prisma.report.findMany({
+        include: {
+          user: { select: { id: true, firstName: true, lastName: true } },
+          container: { select: { id: true, type: true, zone: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+    // Si AGENT : voir les signalements de sa zone (optionnel)
+    else {
+      signalements = await prisma.report.findMany({
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+    
+    res.json(signalements);
   } catch (err) {
-    res.status(500).json({ error: 'Erreur création signalement' });
+    console.error(err);
+    res.status(500).json({ error: 'Erreur récupération signalements' });
   }
 });
 
-app.patch('/signalements/:id/status', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
-  const { status } = req.body;
-  const validStatuses = ['PENDING', 'IN_PROGRESS', 'RESOLVED', 'REJECTED'];
-  if (!status || !validStatuses.includes(status))
-    return res.status(400).json({ error: 'Statut invalide' });
-  try {
-    const updated = await prisma.report.update({ where: { id: parseInt(req.params.id) }, data: { status } });
-    res.json(updated);
-  } catch (err) {
-    if (err.code === 'P2025') return res.status(404).json({ error: 'Signalement introuvable' });
-    res.status(500).json({ error: 'Erreur mise à jour statut' });
-  }
-});
+// Route spécifique citoyens (peut être supprimée si vous utilisez la route ci-dessus)
+// app.get('/signalements/citoyen', authMiddleware, authorize(['CITIZEN']), async (req, res) => {
+//   ... (cette route devient obsolète)
+// });
 
-// ─── Routes (tournées) ───────────────────────────────────────────────────────
-app.get('/routes', authMiddleware, authorize(['ADMIN', 'MANAGER', 'AGENT']), async (req, res) => {
+// Citoyens : voir uniquement leurs propres signalements
+app.get('/signalements/citoyen', authMiddleware, authorize(['CITIZEN']), async (req, res) => {
   try {
-    const where = req.userRole === 'AGENT' ? { agentId: req.userId } : {};
-    const routes = await prisma.route.findMany({
-      where,
+    const signalements = await prisma.report.findMany({
+      where: { userId: req.userId },
       include: {
-        stops: { include: { container: true }, orderBy: { order: 'asc' } },
-        agent: { select: { id: true, firstName: true, lastName: true } },
+        container: { select: { id: true, type: true, zone: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
-    res.json(routes);
-  } catch {
-    res.status(500).json({ error: 'Erreur récupération routes' });
+    res.json(signalements);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur récupération signalements' });
   }
 });
 
-app.post('/routes/optimize', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
-  const { depot, fillThreshold = 70, assignedToId } = req.body;
-  if (!depot?.lat || !depot?.lng)
-    return res.status(400).json({ error: 'Le dépôt (lat/lng) est obligatoire' });
+// Création d'un signalement (citoyen connecté)
+app.post('/signalements', authMiddleware, upload.single('photo'), async (req, res) => {
+  console.log("📝 Création signalement - Body:", req.body);
+  console.log("📝 User ID:", req.userId);
+
+  const { type, comment, containerId, lat, lng } = req.body;
+
+  if (!type) {
+    return res.status(400).json({ error: 'Le type est obligatoire' });
+  }
+
   try {
-    const containers = await prisma.container.findMany({
-      where: { fillLevel: { gte: fillThreshold } },
-      orderBy: { fillLevel: 'desc' },
+    // 1. Créer le signalement
+    const report = await prisma.report.create({
+      data: {
+        type: type,
+        comment: comment || null,
+        lat: lat ? parseFloat(lat) : null,
+        lng: lng ? parseFloat(lng) : null,
+        photoUrl: req.file ? `/uploads/${req.file.filename}` : null,
+        user: { connect: { id: req.userId } },
+        ...(containerId && { container: { connect: { id: parseInt(containerId) } } })
+      }
     });
-    if (containers.length === 0)
-      return res.json({ message: `Aucun conteneur au-dessus de ${fillThreshold}%`, route: [], containersCount: 0 });
-    const result = optimizeRoute(depot, containers);
-    res.status(201).json({ totalDistanceKm: result.totalDistanceKm, containersCount: result.containersCount });
+
+    console.log("✅ Signalement créé:", report);
+
+    // 2. Ajouter des points de gamification
+    const POINTS_PER_REPORT = 10; // Points pour un signalement
+    const BONUS_WITH_PHOTO = 5;   // Bonus si photo
+    
+    let pointsToAdd = POINTS_PER_REPORT;
+    if (req.file) {
+      pointsToAdd += BONUS_WITH_PHOTO;
+    }
+
+    try {
+      // Chercher la gamification de l'utilisateur
+      let gamification = await prisma.gamification.findFirst({
+        where: { userId: req.userId }
+      });
+
+      if (!gamification) {
+        // Créer si elle n'existe pas
+        gamification = await prisma.gamification.create({
+          data: {
+            userId: req.userId,
+            points: pointsToAdd,
+            level: 1,
+            badges: []
+          }
+        });
+        console.log(`🎮 Gamification créée avec ${pointsToAdd} points`);
+      } else {
+        // Mettre à jour les points
+        const newPoints = gamification.points + pointsToAdd;
+        const newLevel = Math.floor(newPoints / 100) + 1; // Niveau = points / 100
+
+        gamification = await prisma.gamification.update({
+          where: { id: gamification.id },
+          data: {
+            points: newPoints,
+            level: newLevel
+          }
+        });
+        console.log(`🎮 Points ajoutés: +${pointsToAdd} (Total: ${newPoints}, Niveau: ${newLevel})`);
+      }
+
+      // Vérifier et attribuer des badges
+      const badges = await checkAndAwardBadges(gamification, req.userId);
+      
+      res.status(201).json({
+        report,
+        gamification: {
+          pointsEarned: pointsToAdd,
+          totalPoints: gamification.points,
+          level: gamification.level,
+          newBadges: badges
+        }
+      });
+
+    } catch (gamError) {
+      console.error("⚠️ Erreur gamification:", gamError);
+      // On envoie quand même le signalement même si la gamification échoue
+      res.status(201).json({ report });
+    }
+
   } catch (err) {
-    res.status(500).json({ error: "Erreur lors de l'optimisation", details: err.message });
+    console.error("❌ Erreur Prisma:", err.message);
+    res.status(500).json({ error: 'Erreur création signalement', details: err.message });
   }
 });
 
-app.delete('/routes/:id', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+// ─────────────────────────────────────────────────────────────────────────────
+// FONCTION : Vérifier et attribuer des badges
+// ─────────────────────────────────────────────────────────────────────────────
+async function checkAndAwardBadges(gamification, userId) {
+  const newBadges = [];
+  const currentBadges = gamification.badges || [];
+
+  // Compter le nombre de signalements de l'utilisateur
+  const reportCount = await prisma.report.count({
+    where: { userId: userId }
+  });
+
+  // Définir les badges possibles
+  const BADGES = [
+    { id: "first_report", name: "Premier Signalement 🌟", condition: reportCount >= 1 },
+    { id: "reporter_5", name: "Citoyen Actif 🔥", condition: reportCount >= 5 },
+    { id: "reporter_10", name: "Super Citoyen 🏆", condition: reportCount >= 10 },
+    { id: "reporter_25", name: "Héros Urbain 🦸", condition: reportCount >= 25 },
+    { id: "level_5", name: "Niveau 5 Atteint ⭐", condition: gamification.level >= 5 },
+    { id: "level_10", name: "Niveau 10 Atteint 💎", condition: gamification.level >= 10 },
+    { id: "points_100", name: "100 Points 🎯", condition: gamification.points >= 100 },
+    { id: "points_500", name: "500 Points 🚀", condition: gamification.points >= 500 },
+  ];
+
+  // Vérifier chaque badge
+  for (const badge of BADGES) {
+    if (badge.condition && !currentBadges.includes(badge.id)) {
+      currentBadges.push(badge.id);
+      newBadges.push(badge);
+    }
+  }
+
+  // Mettre à jour si de nouveaux badges
+  if (newBadges.length > 0) {
+    await prisma.gamification.update({
+      where: { id: gamification.id },
+      data: { badges: currentBadges }
+    });
+    console.log(`🏅 Nouveaux badges attribués:`, newBadges.map(b => b.name));
+  }
+
+  return newBadges;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SIGNALEMENTS - MODIFICATION
+// ─────────────────────────────────────────────────────────────────────────────
+app.put('/signalements/:id', authMiddleware, upload.single('photo'), async (req, res) => {
+  const { id } = req.params;
+  const { type, comment, lat, lng } = req.body;
+
+  console.log("🔧 Modification signalement ID:", id);
+  console.log("🔧 Données reçues:", { type, comment, lat, lng });
+
   try {
-    await prisma.route.delete({ where: { id: parseInt(req.params.id) } });
-    res.json({ message: 'Tournée supprimée' });
+    const existingReport = await prisma.report.findUnique({
+      where: { id: parseInt(id) }
+    });
+
+    if (!existingReport) {
+      return res.status(404).json({ error: 'Signalement non trouvé' });
+    }
+
+    if (req.userRole === 'CITIZEN' && existingReport.userId !== req.userId) {
+      return res.status(403).json({ error: 'Non autorisé à modifier ce signalement' });
+    }
+
+    const updateData = {};
+    if (type) updateData.type = type;
+    if (comment !== undefined) updateData.comment = comment;
+    if (lat) updateData.lat = parseFloat(lat);
+    if (lng) updateData.lng = parseFloat(lng);
+    if (req.file) updateData.photoUrl = `/uploads/${req.file.filename}`;
+
+    const updatedReport = await prisma.report.update({
+      where: { id: parseInt(id) },
+      data: updateData,
+    });
+
+    console.log("✅ Signalement modifié:", updatedReport);
+    res.json(updatedReport);
+
   } catch (err) {
-    if (err.code === 'P2025') return res.status(404).json({ error: 'Tournée introuvable' });
-    res.status(500).json({ error: 'Erreur suppression tournée' });
+    console.error("❌ Erreur modification signalement:", err.message);
+    res.status(500).json({ error: 'Erreur modification signalement', details: err.message });
   }
 });
 
-// ─── Tournées (alias) ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// TOURNÉES
+// ─────────────────────────────────────────────────────────────────────────────
 app.get('/tournees', authMiddleware, authorize(['ADMIN', 'MANAGER', 'AGENT']), async (req, res) => {
   try {
     const where = req.userRole === 'AGENT' ? { agentId: req.userId } : {};
@@ -346,78 +622,106 @@ app.get('/tournees', authMiddleware, authorize(['ADMIN', 'MANAGER', 'AGENT']), a
       include: { agent: { select: { firstName: true, lastName: true } }, containers: true },
     });
     res.json(tournees);
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Erreur récupération tournées' });
   }
 });
 
-// ─── Agents ───────────────────────────────────────────────────────────────────
-app.get('/agents', authMiddleware, authorize(['ADMIN']), async (req, res) => {
+app.post('/tournees', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+  const { agentId, name, startTime, endTime } = req.body;
+
+  if (!agentId)
+    return res.status(400).json({ error: 'agentId est obligatoire' });
+
   try {
-    const agents = await prisma.user.findMany({
-      where: { role: 'AGENT' },
-      select: { id: true, firstName: true, lastName: true, email: true, role: true },
+    const route = await prisma.route.create({
+      data: {
+        agentId: parseInt(agentId),
+        name: name || 'Route sans nom',
+        startTime: startTime ? new Date(startTime) : null,
+        endTime: endTime ? new Date(endTime) : null,
+      },
     });
-    res.json(agents);
-  } catch {
-    res.status(500).json({ error: 'Erreur récupération agents' });
+    res.status(201).json(route);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur création tournée' });
   }
 });
 
-// ─── Gamification ─────────────────────────────────────────────────────────────
+app.put('/tournees/:id', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+  const { id } = req.params;
+  const { agentId, startTime, endTime, name } = req.body;
+
+  try {
+    const updateData = {};
+    if (agentId) updateData.agentId = parseInt(agentId);
+    if (startTime) updateData.startTime = new Date(startTime);
+    if (endTime) updateData.endTime = new Date(endTime);
+    if (name) updateData.name = name;
+
+    const updatedRoute = await prisma.route.update({
+      where: { id: parseInt(id) },
+      data: updateData,
+    });
+
+    res.json(updatedRoute);
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: 'Erreur lors de la mise à jour de la tournée' });
+  }
+});
+
+app.delete('/tournees/:id', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    await prisma.route.delete({
+      where: { id: parseInt(id) },
+    });
+    res.json({ message: 'Tournée supprimée avec succès' });
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: 'Erreur lors de la suppression de la tournée' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GAMIFICATION
+// ─────────────────────────────────────────────────────────────────────────────
 app.get('/gamification', authMiddleware, async (req, res) => {
   try {
-    const userExists = await prisma.user.findUnique({ where: { id: req.userId } });
-    if (!userExists) return res.status(401).json({ error: 'Session invalide. Veuillez vous reconnecter.' });
-    let gamification = await prisma.gamification.findFirst({ where: { userId: req.userId } });
-    if (!gamification) {
-      gamification = await prisma.gamification.create({
-        data: { userId: req.userId, points: 0, level: 1, badges: [] },
+    // 1. Vérifier que l'utilisateur existe
+    const userExists = await prisma.user.findUnique({
+      where: { id: req.userId }
+    });
+
+    if (!userExists) {
+      return res.status(401).json({ 
+        error: 'Session invalide. Veuillez vous reconnecter.' 
       });
     }
+
+    // 2. Chercher ou créer la gamification
+    let gamification = await prisma.gamification.findFirst({
+      where: { userId: req.userId },
+    });
+    
+    if (!gamification) {
+      gamification = await prisma.gamification.create({
+        data: { 
+          userId: req.userId, 
+          points: 0, 
+          level: 1, 
+          badges: [] 
+        },
+      });
+    }
+    
     res.json(gamification);
   } catch (err) {
+    console.error('❌ Erreur gamification:', err);
     res.status(500).json({ error: 'Erreur serveur', details: err.message });
-  }
-});
-
-// ─── Dashboard admin ──────────────────────────────────────────────────────────
-app.get('/dashboard/admin', authMiddleware, authorize(['ADMIN']), async (req, res) => {
-  try {
-    const [agentsCount, containersCount, tourneesCount, signalementsCount] = await Promise.all([
-      prisma.user.count({ where: { role: 'AGENT' } }),
-      prisma.container.count(),
-      prisma.route.count(),
-      prisma.report.count(),
-    ]);
-    res.json({ agents: agentsCount, containers: containersCount, tournees: tourneesCount, signalements: signalementsCount });
-  } catch {
-    res.status(500).json({ error: 'Erreur récupération stats' });
-  }
-});
-
-// ─── Missions ─────────────────────────────────────────────────────────────────
-app.get('/missions', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
-  try {
-    const missions = await prisma.mission.findMany({
-      include: { agent: { select: { id: true, firstName: true, lastName: true } } },
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json(missions);
-  } catch {
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-app.get('/missions/mes-missions', authMiddleware, async (req, res) => {
-  try {
-    const missions = await prisma.mission.findMany({
-      where: { agentId: req.userId },
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json(missions);
-  } catch {
-    res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
