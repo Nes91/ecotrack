@@ -41,38 +41,44 @@ export default function Auth({ onLoginSuccess }) {
 
   const toggleMode = () => { setIsSignup(!isSignup); resetMessage(); resetFields(); };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    resetMessage();
-    setLoading(true);
-    try {
-      if (isSignup) {
-        const name = `${firstName} ${lastName}`.trim();
-        await API.post("/auth/register", { firstName, lastName, name, email, password });
-        setIsError(false);
-        setMessage("Inscription réussie ! Connectez-vous maintenant.");
-        setIsSignup(false);
-        resetFields();
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  resetMessage();
+  setLoading(true);
+  try {
+    if (isSignup) {
+      const name = `${firstName} ${lastName}`.trim();
+      await API.post("/auth/register", { firstName, lastName, name, email, password });
+      setIsError(false);
+      setMessage("Inscription réussie ! Connectez-vous maintenant.");
+      setIsSignup(false);
+      resetFields();
+    } else {
+      const res = await API.post("/auth/login", { email, password });
+      if (res.data.requires2FA) {
+        setTempToken(res.data.tempToken);
+        setStep("2fa");
       } else {
-        const res = await API.post("/auth/login", { email, password });
-        if (res.data.requires2FA) {
-          setTempToken(res.data.tempToken);
-          setStep("2fa");
-        } else {
-          saveUserToStorage(res.data);
-          socket.emit('register', res.data.id);
-          setIsError(false);
-          setMessage(`Bienvenue ${res.data.name} !`);
-          if (onLoginSuccess) onLoginSuccess(res.data);
+        // ✅ Vérifier que le rôle correspond
+        if (selectedRole && res.data.role !== selectedRole) {
+          setIsError(true);
+          setMessage(`Ce compte n'est pas un ${role?.label}. Veuillez choisir le bon rôle.`);
+          return;
         }
+        saveUserToStorage(res.data);
+        socket.emit('register', res.data.id);
+        setIsError(false);
+        setMessage(`Bienvenue ${res.data.name} !`);
+        if (onLoginSuccess) onLoginSuccess(res.data);
       }
-    } catch (err) {
-      setIsError(true);
-      setMessage(err.response?.data?.message || err.response?.data?.error || "Erreur serveur");
-    } finally {
-      setLoading(false);
     }
-  };
+  } catch (err) {
+    setIsError(true);
+    setMessage(err.response?.data?.message || err.response?.data?.error || "Erreur serveur");
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handle2FASubmit = async (e) => {
     e.preventDefault();
