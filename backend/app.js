@@ -68,7 +68,7 @@ app.post('/auth/register', async (req, res) => {
         lastName: name.split(' ')[1] || '',
         email, 
         password: hashedPassword, 
-        role: 'CITIZEN',
+        role: role || 'CITIZEN',
         gamifications: {  // ← Créer la gamification en même temps
           create: {
             points: 0,

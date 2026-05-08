@@ -48,7 +48,7 @@ const handleSubmit = async (e) => {
   try {
     if (isSignup) {
       const name = `${firstName} ${lastName}`.trim();
-      await API.post("/auth/register", { firstName, lastName, name, email, password });
+      await API.post("/auth/register", { firstName, lastName, name, email, password, role: selectedRole });
       setIsError(false);
       setMessage("Inscription réussie ! Connectez-vous maintenant.");
       setIsSignup(false);
