@@ -3,73 +3,30 @@ import API from "../api/api";
 import socket from '../socket/socket';
 
 const ROLES = [
-  {
-    id: "ADMIN",
-    label: "Administrateur",
-    desc: "Gestion complète de la plateforme",
-    icon: "🛡️",
-    color: "#7c3aed",
-    bg: "rgba(124,58,237,0.15)",
-    border: "rgba(124,58,237,0.4)",
-  },
-  {
-    id: "MANAGER",
-    label: "Manager",
-    desc: "Supervision des équipes et zones",
-    icon: "💼",
-    color: "#2563eb",
-    bg: "rgba(37,99,235,0.15)",
-    border: "rgba(37,99,235,0.4)",
-  },
-  {
-    id: "AGENT",
-    label: "Agent",
-    desc: "Gestion des tournées de collecte",
-    icon: "🚛",
-    color: "#d97706",
-    bg: "rgba(217,119,6,0.15)",
-    border: "rgba(217,119,6,0.4)",
-  },
-  {
-    id: "CITIZEN",
-    label: "Citoyen",
-    desc: "Signalement et suivi citoyen",
-    icon: "👤",
-    color: "#16a34a",
-    bg: "rgba(22,163,74,0.15)",
-    border: "rgba(22,163,74,0.4)",
-  },
+  { id: "ADMIN", label: "Administrateur", desc: "Gestion complète de la plateforme", icon: "🛡️", color: "#7c3aed", bg: "rgba(124,58,237,0.15)", border: "rgba(124,58,237,0.4)" },
+  { id: "MANAGER", label: "Manager", desc: "Supervision des équipes et zones", icon: "💼", color: "#2563eb", bg: "rgba(37,99,235,0.15)", border: "rgba(37,99,235,0.4)" },
+  { id: "AGENT", label: "Agent", desc: "Gestion des tournées de collecte", icon: "🚛", color: "#d97706", bg: "rgba(217,119,6,0.15)", border: "rgba(217,119,6,0.4)" },
+  { id: "CITIZEN", label: "Citoyen", desc: "Signalement et suivi citoyen", icon: "👤", color: "#16a34a", bg: "rgba(22,163,74,0.15)", border: "rgba(22,163,74,0.4)" },
 ];
 
 export default function Auth({ onLoginSuccess }) {
-  // Étapes : "role" | "login" | "signup" | "2fa"
   const [step, setStep] = useState("role");
+  const [isSignup, setIsSignup] = useState(false);
   const [selectedRole, setSelectedRole] = useState(null);
-
-  // Champs login
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-
-  // Champs signup
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
-  const [signupEmail, setSignupEmail] = useState("");
-  const [signupPassword, setSignupPassword] = useState("");
-
-  // 2FA
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [tempToken, setTempToken] = useState("");
   const [twoFACode, setTwoFACode] = useState("");
-
-  // UI
   const [message, setMessage] = useState("");
   const [isError, setIsError] = useState(true);
   const [loading, setLoading] = useState(false);
 
   const role = ROLES.find((r) => r.id === selectedRole);
-
   const resetMessage = () => { setMessage(""); setIsError(true); };
+  const resetFields = () => { setFirstName(""); setLastName(""); setEmail(""); setPassword(""); };
 
-  // ── Helpers localStorage ───────────────────────────────────────────────────
   const saveUserToStorage = (data) => {
     const nameParts = (data.name || "").split(" ");
     const fn = nameParts[0] || "";
@@ -82,52 +39,41 @@ export default function Auth({ onLoginSuccess }) {
     localStorage.setItem("user", JSON.stringify({ ...data, firstName: fn, lastName: ln }));
   };
 
-  // ── Connexion ──────────────────────────────────────────────────────────────
-  const handleLogin = async (e) => {
+  const toggleMode = () => { setIsSignup(!isSignup); resetMessage(); resetFields(); };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     resetMessage();
     setLoading(true);
     try {
-      const res = await API.post("/auth/login", { email, password });
-      if (res.data.requires2FA) {
-        setTempToken(res.data.tempToken);
-        setStep("2fa");
-      } else {
-        saveUserToStorage(res.data);
-        socket.emit('register', res.data.id);
+      if (isSignup) {
+        const name = `${firstName} ${lastName}`.trim();
+        await API.post("/auth/register", { firstName, lastName, name, email, password });
         setIsError(false);
-        setMessage(`Bienvenue ${res.data.name} !`);
-        if (onLoginSuccess) onLoginSuccess(res.data);
+        setMessage("Inscription réussie ! Connectez-vous maintenant.");
+        setIsSignup(false);
+        resetFields();
+      } else {
+        const res = await API.post("/auth/login", { email, password });
+        if (res.data.requires2FA) {
+          setTempToken(res.data.tempToken);
+          setStep("2fa");
+        } else {
+          saveUserToStorage(res.data);
+          socket.emit('register', res.data.id);
+          setIsError(false);
+          setMessage(`Bienvenue ${res.data.name} !`);
+          if (onLoginSuccess) onLoginSuccess(res.data);
+        }
       }
     } catch (err) {
       setIsError(true);
-      setMessage(err.response?.data?.message || err.response?.data?.error || "Identifiants incorrects");
+      setMessage(err.response?.data?.message || err.response?.data?.error || "Erreur serveur");
     } finally {
       setLoading(false);
     }
   };
 
-  // ── Inscription ────────────────────────────────────────────────────────────
-  const handleSignup = async (e) => {
-    e.preventDefault();
-    resetMessage();
-    setLoading(true);
-    try {
-      const name = `${firstName} ${lastName}`.trim();
-      await API.post("/auth/register", { firstName, lastName, name, email: signupEmail, password: signupPassword });
-      setIsError(false);
-      setMessage("Inscription réussie ! Connectez-vous maintenant.");
-      setStep("role");
-      setFirstName(""); setLastName(""); setSignupEmail(""); setSignupPassword("");
-    } catch (err) {
-      setIsError(true);
-      setMessage(err.response?.data?.message || err.response?.data?.error || "Erreur lors de l'inscription");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // ── 2FA ───────────────────────────────────────────────────────────────────
   const handle2FASubmit = async (e) => {
     e.preventDefault();
     resetMessage();
@@ -145,7 +91,6 @@ export default function Auth({ onLoginSuccess }) {
     }
   };
 
-  // ── Rendu : Logo commun ────────────────────────────────────────────────────
   const Logo = () => (
     <div style={styles.logoSection}>
       <div style={styles.logoCircle}>
@@ -155,8 +100,7 @@ export default function Auth({ onLoginSuccess }) {
           <path d="M14 10v8M11 14l3-3 3 3" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           <defs>
             <linearGradient id="authGrad" x1="6" y1="4" x2="22" y2="24">
-              <stop stopColor="#8b5cf6" />
-              <stop offset="1" stopColor="#6366f1" />
+              <stop stopColor="#8b5cf6" /><stop offset="1" stopColor="#6366f1" />
             </linearGradient>
           </defs>
         </svg>
@@ -167,19 +111,17 @@ export default function Auth({ onLoginSuccess }) {
 
   const Orbs = () => (
     <>
-      <div style={styles.orb1} />
-      <div style={styles.orb2} />
-      <div style={styles.orb3} />
-      <div style={styles.orb4} />
+      <div style={styles.orb1} /><div style={styles.orb2} />
+      <div style={styles.orb3} /><div style={styles.orb4} />
     </>
   );
 
   const Animations = () => (
     <style>{`
-      @keyframes float { 0%,100%{transform:translate(0,0)} 50%{transform:translate(30px,-30px)} }
-      @keyframes glow  { 0%,100%{opacity:.3} 50%{opacity:.5} }
-      @keyframes slideIn { from{opacity:0;transform:translateY(-20px)} to{opacity:1;transform:translateY(0)} }
-      @keyframes spin  { to{transform:rotate(360deg)} }
+      @keyframes float{0%,100%{transform:translate(0,0)}50%{transform:translate(30px,-30px)}}
+      @keyframes glow{0%,100%{opacity:.3}50%{opacity:.5}}
+      @keyframes slideIn{from{opacity:0;transform:translateY(-20px)}to{opacity:1;transform:translateY(0)}}
+      @keyframes spin{to{transform:rotate(360deg)}}
     `}</style>
   );
 
@@ -196,52 +138,28 @@ export default function Auth({ onLoginSuccess }) {
               <h2 style={styles.title}>Qui êtes-vous ?</h2>
               <p style={styles.subtitle}>Choisissez votre rôle pour accéder à votre espace</p>
             </div>
-
             <div style={styles.rolesGrid}>
               {ROLES.map((r) => (
-                <div
-                  key={r.id}
-                  style={{
-                    ...styles.roleCard,
-                    border: selectedRole === r.id ? `2px solid ${r.color}` : "1px solid rgba(139,92,246,0.2)",
-                    background: selectedRole === r.id ? r.bg : "rgba(255,255,255,0.05)",
-                  }}
+                <div key={r.id}
+                  style={{ ...styles.roleCard, border: selectedRole === r.id ? `2px solid ${r.color}` : "1px solid rgba(139,92,246,0.2)", background: selectedRole === r.id ? r.bg : "rgba(255,255,255,0.05)" }}
                   onClick={() => setSelectedRole(r.id)}
                 >
                   <div style={{ fontSize: "32px", marginBottom: "8px" }}>{r.icon}</div>
                   <div style={{ fontSize: "15px", fontWeight: "700", color: "#fff", marginBottom: "4px" }}>{r.label}</div>
                   <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.55)", textAlign: "center", lineHeight: "1.4" }}>{r.desc}</div>
-                  {selectedRole === r.id && (
-                    <div style={{ ...styles.checkBadge, background: r.color }}>✓</div>
-                  )}
+                  {selectedRole === r.id && <div style={{ ...styles.checkBadge, background: r.color }}>✓</div>}
                 </div>
               ))}
             </div>
-
             {selectedRole ? (
-              <button
-                style={{ ...styles.submitButton, background: `linear-gradient(135deg, ${role?.color}, ${role?.color}cc)` }}
-                onClick={() => { resetMessage(); setStep("login"); }}
-              >
+              <button style={{ ...styles.submitButton, background: `linear-gradient(135deg, ${role?.color}, ${role?.color}cc)` }}
+                onClick={() => { resetMessage(); setIsSignup(false); setStep("form"); }}>
                 Continuer →
               </button>
             ) : (
               <button style={{ ...styles.submitButton, opacity: 0.4, cursor: "not-allowed" }} disabled>
                 Choisissez un rôle
               </button>
-            )}
-
-            <div style={styles.toggleSection}>
-              <span style={styles.toggleText}>Pas encore de compte ?</span>
-              <button type="button" onClick={() => { resetMessage(); setStep("signup"); }} style={styles.toggleButton}>
-                S'inscrire
-              </button>
-            </div>
-
-            {message && (
-              <div style={isError ? styles.errorMessage : styles.successMessage}>
-                <span>{message}</span>
-              </div>
             )}
           </div>
         </div>
@@ -250,8 +168,8 @@ export default function Auth({ onLoginSuccess }) {
     );
   }
 
-  // ── Étape 2 : Connexion ────────────────────────────────────────────────────
-  if (step === "login") {
+  // ── Étape 2 : Formulaire connexion / inscription ───────────────────────────
+  if (step === "form") {
     return (
       <div style={styles.container}>
         <Orbs />
@@ -259,27 +177,50 @@ export default function Auth({ onLoginSuccess }) {
           <div style={styles.glowEffect} />
           <div style={styles.card}>
             <Logo />
-
-            <button style={styles.backBtn} onClick={() => { resetMessage(); setStep("role"); }}>
+            <button style={styles.backBtn} onClick={() => { resetMessage(); resetFields(); setStep("role"); }}>
               ← Retour
             </button>
-
-            <div style={{
-              display: "inline-flex", alignItems: "center", gap: "8px",
-              padding: "6px 16px", borderRadius: "20px",
-              background: role?.bg, border: `1px solid ${role?.border}`,
-              marginBottom: "20px",
-            }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: "8px", padding: "6px 16px", borderRadius: "20px", background: role?.bg, border: `1px solid ${role?.border}`, marginBottom: "20px" }}>
               <span>{role?.icon}</span>
               <span style={{ fontSize: "14px", fontWeight: "600", color: role?.color }}>{role?.label}</span>
             </div>
 
-            <div style={styles.titleSection}>
-              <h2 style={styles.title}>Bon retour</h2>
-              <p style={styles.subtitle}>Connectez-vous pour continuer</p>
+            {/* Switch Se connecter / S'inscrire */}
+            <div style={styles.switchContainer}>
+              <button style={{ ...styles.switchBtn, ...(!isSignup ? styles.switchBtnActive(role?.color) : {}) }}
+                onClick={() => { setIsSignup(false); resetMessage(); resetFields(); }}>
+                Se connecter
+              </button>
+              <button style={{ ...styles.switchBtn, ...(isSignup ? styles.switchBtnActive(role?.color) : {}) }}
+                onClick={() => { setIsSignup(true); resetMessage(); resetFields(); }}>
+                S'inscrire
+              </button>
             </div>
 
-            <form onSubmit={handleLogin} style={styles.form}>
+            <div style={styles.titleSection}>
+              <h2 style={styles.title}>{isSignup ? "Créer un compte" : "Bon retour"}</h2>
+              <p style={styles.subtitle}>{isSignup ? "Rejoignez la communauté EcoTrack" : "Connectez-vous pour continuer"}</p>
+            </div>
+
+            <form onSubmit={handleSubmit} style={styles.form}>
+              {isSignup && (
+                <div style={styles.nameFieldsWrapper}>
+                  <div style={styles.fieldGroup}>
+                    <label style={styles.label}>Prénom</label>
+                    <div style={styles.inputWrapper}>
+                      <input type="text" placeholder="Jean" value={firstName}
+                        onChange={e => setFirstName(e.target.value)} style={styles.input} required />
+                    </div>
+                  </div>
+                  <div style={styles.fieldGroup}>
+                    <label style={styles.label}>Nom</label>
+                    <div style={styles.inputWrapper}>
+                      <input type="text" placeholder="Dupont" value={lastName}
+                        onChange={e => setLastName(e.target.value)} style={styles.input} required />
+                    </div>
+                  </div>
+                </div>
+              )}
               <div style={styles.fieldGroup}>
                 <label style={styles.label}>Email</label>
                 <div style={styles.inputWrapper}>
@@ -291,26 +232,25 @@ export default function Auth({ onLoginSuccess }) {
                 <label style={styles.label}>Mot de passe</label>
                 <div style={styles.inputWrapper}>
                   <input type="password" placeholder="••••••••" value={password}
-                    onChange={e => setPassword(e.target.value)} style={styles.input} required />
+                    onChange={e => setPassword(e.target.value)} style={styles.input}
+                    required minLength={isSignup ? 8 : undefined} />
                 </div>
               </div>
-              <button type="submit" style={{ ...styles.submitButton, background: `linear-gradient(135deg, ${role?.color}, ${role?.color}cc)` }} disabled={loading}>
+              <button type="submit"
+                style={{ ...styles.submitButton, background: `linear-gradient(135deg, ${role?.color}, ${role?.color}cc)` }}
+                disabled={loading}>
                 {loading ? (
-                  <div style={styles.spinnerWrapper}><div style={styles.spinner} /><span>Connexion...</span></div>
-                ) : <span>Se connecter</span>}
+                  <div style={styles.spinnerWrapper}><div style={styles.spinner} /><span>{isSignup ? "Création..." : "Connexion..."}</span></div>
+                ) : <span>{isSignup ? "Créer mon compte" : "Se connecter"}</span>}
               </button>
             </form>
 
-            {message && (
-              <div style={isError ? styles.errorMessage : styles.successMessage}>
-                <span>{message}</span>
-              </div>
-            )}
+            {message && <div style={isError ? styles.errorMessage : styles.successMessage}><span>{message}</span></div>}
 
             <div style={styles.toggleSection}>
-              <span style={styles.toggleText}>Pas encore de compte ?</span>
-              <button type="button" onClick={() => { resetMessage(); setStep("signup"); }} style={styles.toggleButton}>
-                S'inscrire
+              <span style={styles.toggleText}>{isSignup ? "Déjà un compte ?" : "Pas encore de compte ?"}</span>
+              <button type="button" onClick={toggleMode} style={styles.toggleButton}>
+                {isSignup ? "Se connecter" : "S'inscrire"}
               </button>
             </div>
           </div>
@@ -320,83 +260,7 @@ export default function Auth({ onLoginSuccess }) {
     );
   }
 
-  // ── Étape 3 : Inscription ──────────────────────────────────────────────────
-  if (step === "signup") {
-    return (
-      <div style={styles.container}>
-        <Orbs />
-        <div style={styles.cardWrapper}>
-          <div style={styles.glowEffect} />
-          <div style={styles.card}>
-            <Logo />
-
-            <button style={styles.backBtn} onClick={() => { resetMessage(); setStep("role"); }}>
-              ← Retour
-            </button>
-
-            <div style={styles.titleSection}>
-              <h2 style={styles.title}>Créer un compte</h2>
-              <p style={styles.subtitle}>Rejoignez la communauté EcoTrack</p>
-            </div>
-
-            <form onSubmit={handleSignup} style={styles.form}>
-              <div style={styles.nameFieldsWrapper}>
-                <div style={styles.fieldGroup}>
-                  <label style={styles.label}>Prénom</label>
-                  <div style={styles.inputWrapper}>
-                    <input type="text" placeholder="Jean" value={firstName}
-                      onChange={e => setFirstName(e.target.value)} style={styles.input} required />
-                  </div>
-                </div>
-                <div style={styles.fieldGroup}>
-                  <label style={styles.label}>Nom</label>
-                  <div style={styles.inputWrapper}>
-                    <input type="text" placeholder="Dupont" value={lastName}
-                      onChange={e => setLastName(e.target.value)} style={styles.input} required />
-                  </div>
-                </div>
-              </div>
-              <div style={styles.fieldGroup}>
-                <label style={styles.label}>Email</label>
-                <div style={styles.inputWrapper}>
-                  <input type="email" placeholder="vous@exemple.com" value={signupEmail}
-                    onChange={e => setSignupEmail(e.target.value)} style={styles.input} required />
-                </div>
-              </div>
-              <div style={styles.fieldGroup}>
-                <label style={styles.label}>Mot de passe</label>
-                <div style={styles.inputWrapper}>
-                  <input type="password" placeholder="••••••••" value={signupPassword}
-                    onChange={e => setSignupPassword(e.target.value)} style={styles.input} required minLength={8} />
-                </div>
-              </div>
-              <button type="submit" style={styles.submitButton} disabled={loading}>
-                {loading ? (
-                  <div style={styles.spinnerWrapper}><div style={styles.spinner} /><span>Création...</span></div>
-                ) : <span>S'inscrire</span>}
-              </button>
-            </form>
-
-            {message && (
-              <div style={isError ? styles.errorMessage : styles.successMessage}>
-                <span>{message}</span>
-              </div>
-            )}
-
-            <div style={styles.toggleSection}>
-              <span style={styles.toggleText}>Déjà un compte ?</span>
-              <button type="button" onClick={() => { resetMessage(); setStep("role"); }} style={styles.toggleButton}>
-                Se connecter
-              </button>
-            </div>
-          </div>
-        </div>
-        <Animations />
-      </div>
-    );
-  }
-
-  // ── Étape 4 : 2FA ─────────────────────────────────────────────────────────
+  // ── Étape 3 : 2FA ─────────────────────────────────────────────────────────
   if (step === "2fa") {
     return (
       <div style={styles.container}>
@@ -413,33 +277,19 @@ export default function Auth({ onLoginSuccess }) {
               <div style={styles.fieldGroup}>
                 <label style={styles.label}>Code à 6 chiffres</label>
                 <div style={styles.inputWrapper}>
-                  <input
-                    type="text"
-                    placeholder="123456"
-                    value={twoFACode}
+                  <input type="text" placeholder="123456" value={twoFACode}
                     onChange={e => setTwoFACode(e.target.value)}
                     style={{ ...styles.input, textAlign: "center", fontSize: "22px", letterSpacing: "8px" }}
-                    maxLength={6}
-                    autoFocus
-                    required
-                  />
+                    maxLength={6} autoFocus required />
                 </div>
               </div>
               <button type="submit" style={styles.submitButton} disabled={loading}>
-                {loading ? (
-                  <div style={styles.spinnerWrapper}><div style={styles.spinner} /><span>Vérification...</span></div>
-                ) : <span>Confirmer</span>}
+                {loading ? <div style={styles.spinnerWrapper}><div style={styles.spinner} /><span>Vérification...</span></div> : <span>Confirmer</span>}
               </button>
             </form>
-            {message && (
-              <div style={isError ? styles.errorMessage : styles.successMessage}>
-                <span>{message}</span>
-              </div>
-            )}
+            {message && <div style={styles.errorMessage}><span>{message}</span></div>}
             <div style={styles.toggleSection}>
-              <button type="button"
-                onClick={() => { setStep("login"); setTwoFACode(""); resetMessage(); }}
-                style={styles.toggleButton}>
+              <button type="button" onClick={() => { setStep("form"); setTwoFACode(""); resetMessage(); }} style={styles.toggleButton}>
                 ← Retour à la connexion
               </button>
             </div>
@@ -464,14 +314,17 @@ const styles = {
   logoCircle: { width: "80px", height: "80px", borderRadius: "50%", background: "linear-gradient(135deg, rgba(139,92,246,0.2), rgba(99,102,241,0.2))", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "16px", border: "2px solid rgba(139,92,246,0.3)", boxShadow: "0 8px 32px rgba(139,92,246,0.3)" },
   brandName: { fontSize: "32px", fontWeight: "800", color: "#fff", margin: 0, letterSpacing: "-0.5px" },
   brandAccent: { background: "linear-gradient(135deg, #8b5cf6, #6366f1)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" },
-  titleSection: { textAlign: "center", marginBottom: "28px" },
+  titleSection: { textAlign: "center", marginBottom: "24px" },
   title: { fontSize: "26px", fontWeight: "700", color: "#fff", margin: "0 0 8px 0", letterSpacing: "-0.5px" },
   subtitle: { fontSize: "15px", color: "rgba(255,255,255,0.6)", margin: 0 },
   rolesGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "20px" },
   roleCard: { position: "relative", borderRadius: "16px", padding: "18px 12px", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", transition: "all 0.2s", backdropFilter: "blur(10px)" },
   checkBadge: { position: "absolute", top: "8px", right: "8px", width: "20px", height: "20px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "11px", fontWeight: "700" },
+  switchContainer: { display: "flex", background: "rgba(255,255,255,0.08)", borderRadius: "12px", padding: "4px", marginBottom: "20px", gap: "4px" },
+  switchBtn: { flex: 1, padding: "10px", border: "none", borderRadius: "10px", fontSize: "14px", fontWeight: "600", cursor: "pointer", background: "transparent", color: "rgba(255,255,255,0.5)", transition: "all 0.2s" },
+  switchBtnActive: (color) => ({ background: color || "#7c3aed", color: "#fff", boxShadow: `0 4px 12px ${color}55` }),
   backBtn: { background: "none", border: "none", cursor: "pointer", color: "rgba(255,255,255,0.6)", fontSize: "14px", display: "flex", alignItems: "center", gap: "4px", marginBottom: "16px", padding: "0" },
-  form: { display: "flex", flexDirection: "column", gap: "20px" },
+  form: { display: "flex", flexDirection: "column", gap: "18px" },
   nameFieldsWrapper: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" },
   fieldGroup: { display: "flex", flexDirection: "column", gap: "8px" },
   label: { fontSize: "14px", fontWeight: "600", color: "rgba(255,255,255,0.9)", letterSpacing: "0.3px" },
@@ -482,7 +335,7 @@ const styles = {
   spinner: { width: "20px", height: "20px", border: "3px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", borderRadius: "50%", animation: "spin 0.8s linear infinite" },
   errorMessage: { display: "flex", alignItems: "center", gap: "12px", padding: "16px", borderRadius: "16px", background: "rgba(239,68,68,0.15)", border: "1px solid rgba(239,68,68,0.3)", color: "#fca5a5", fontSize: "14px", fontWeight: "500", marginTop: "16px" },
   successMessage: { display: "flex", alignItems: "center", gap: "12px", padding: "16px", borderRadius: "16px", background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.3)", color: "#86efac", fontSize: "14px", fontWeight: "500", marginTop: "16px" },
-  toggleSection: { display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", marginTop: "24px", paddingTop: "24px", borderTop: "1px solid rgba(139,92,246,0.1)" },
+  toggleSection: { display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", marginTop: "20px", paddingTop: "20px", borderTop: "1px solid rgba(139,92,246,0.1)" },
   toggleText: { fontSize: "14px", color: "rgba(255,255,255,0.6)" },
-  toggleButton: { display: "flex", alignItems: "center", gap: "6px", background: "none", border: "none", color: "#6366f1", fontSize: "14px", fontWeight: "700", cursor: "pointer", padding: "4px 8px" },
+  toggleButton: { background: "none", border: "none", color: "#6366f1", fontSize: "14px", fontWeight: "700", cursor: "pointer", padding: "4px 8px" },
 };
