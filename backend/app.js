@@ -724,4 +724,23 @@ app.get('/gamification', authMiddleware, async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DASHBOARD ADMIN
+// ─────────────────────────────────────────────────────────────────────────────
+app.get('/dashboard/admin', authMiddleware, authorize(['ADMIN']), async (req, res) => {
+  try {
+    const [agents, containers, tournees, signalements, signalements_pending] = await Promise.all([
+      prisma.user.count({ where: { role: 'AGENT' } }),
+      prisma.container.count(),
+      prisma.route.count(),
+      prisma.report.count(),
+      prisma.report.count({ where: { status: 'PENDING' } }),
+    ]);
+    res.json({ agents, containers, tournees, signalements, signalements_pending });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur récupération stats dashboard' });
+  }
+});
+
 export default app;
