@@ -54,11 +54,10 @@ const authorize = (roles) => (req, res, next) => {
 // AUTH
 // ─────────────────────────────────────────────────────────────────────────────
 app.post('/auth/register', async (req, res) => {
-  const { name, email, password } = req.body;
+const { name, firstName, lastName, email, password, role } = req.body;
 
-  if (!name || !email || !password)
-    return res.status(400).json({ message: 'Tous les champs sont obligatoires' });
-
+  if (!email || !password)
+  return res.status(400).json({ message: 'Tous les champs sont obligatoires' });
   const hashedPassword = await bcrypt.hash(password, 10);
 
   try {
