@@ -743,4 +743,28 @@ app.get('/dashboard/admin', authMiddleware, authorize(['ADMIN']), async (req, re
   }
 });
 
+// ─── AUTH ME ─────────────────────────────────────────────────────────────────
+app.get('/auth/me', authMiddleware, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId },
+      include: { gamifications: true },
+    });
+    if (!user) return res.status(404).json({ error: 'Utilisateur introuvable' });
+    
+    const gamification = user.gamifications?.[0] || { points: 0, level: 1, badges: [] };
+    const { password, ...safeUser } = user;
+    
+    res.json({
+      ...safeUser,
+      points: gamification.points,
+      level:  gamification.level,
+      badges: gamification.badges,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 export default app;
