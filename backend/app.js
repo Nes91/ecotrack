@@ -618,11 +618,14 @@ app.get('/tournees', authMiddleware, authorize(['ADMIN', 'MANAGER', 'AGENT']), a
     const where = req.userRole === 'AGENT' ? { agentId: req.userId } : {};
     const tournees = await prisma.route.findMany({
       where,
-      include: { agent: { select: { firstName: true, lastName: true } }, containers: true },
+      include: { 
+        agent: { select: { firstName: true, lastName: true } }, 
+        stops: { include: { container: true }, orderBy: { order: 'asc' } }
+      },
+      orderBy: { createdAt: 'desc' }
     });
     res.json(tournees);
   } catch (err) {
-    console.error(err);
     res.status(500).json({ error: 'Erreur récupération tournées' });
   }
 });
