@@ -324,8 +324,9 @@ function AgentRouteMap({ stops, depot }) {
             <Popup><strong>Dépôt de départ</strong></Popup>
           </Marker>
 
-          {validStops.map(stop => {
+          {validStops.map((stop, i) => {
             const isDone = !!stop.collectedAt;
+            const isNext = !isDone && validStops.slice(0, i).every(s => s.collectedAt);
             return (
               <Marker
                 key={stop.id}
@@ -337,15 +338,23 @@ function AgentRouteMap({ stops, depot }) {
                 })}
               >
                 <Popup>
-                  <strong>Arrêt #{stop.order}</strong><br />
-                  🗑️ {stop.container?.type}<br />
-                  📍 {stop.container?.zone || "—"}<br />
-                  💧 {stop.container?.fillLevel}%
+                  <div>
+                    <strong>Arrêt #{stop.order}</strong><br />
+                    🗑️ {stop.container?.type}<br />
+                    📍 {stop.container?.zone || "—"}<br />
+                    💧 {stop.container?.fillLevel}%
+                    <br />
+                    {isDone
+                      ? `✅ Collecté à ${new Date(stop.collectedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
+                      : isNext ? "👉 Prochain arrêt" : "⏳ En attente"
+                    }
+                  </div>
                 </Popup>
               </Marker>
             );
           })}
 
+          {/* Auto-zoom sur l'itinéraire */}
           <MapBounds stops={validStops} depot={depot} />
         </MapContainer>
       </div>
