@@ -982,30 +982,28 @@ app.get('/missions/mes-missions', authMiddleware, async (req, res) => {
 // MISSIONS
 // ─────────────────────────────────────────────────────────────────────────────
 
-app.post('/missions', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
-  const { title, description, agentId } = req.body;
-
-  // Validation des données entrantes
-  if (!title || !agentId) {
-    return res.status(400).json({ error: "Le titre et l'agent sont obligatoires." });
-  }
+app.post('/missions', authMiddleware, async (req, res) => {
+  const { title, agentId } = req.body;
 
   try {
-    const mission = await prisma.mission.create({
+    const newRoute = await prisma.route.create({
       data: {
-        title,
-        description: description || "",
+        name: title, // Utilise 'name' car c'est le champ dans ton schéma Prisma
+        agentId: parseInt(agentId),
         status: 'PENDING',
-        // Conversion forcée en entier pour satisfaire le schéma Prisma
-        agentId: parseInt(agentId), 
-        // Récupération automatique de l'ID de l'admin depuis le token (via authMiddleware)
-        adminId: req.userId 
+      },
+      // On inclut l'agent pour que le frontend reçoive immédiatement son nom
+      include: {
+        agent: {
+          select: { id: true, firstName: true, lastName: true }
+        }
       }
     });
-    res.status(201).json(mission);
+
+    res.status(201).json(newRoute);
   } catch (err) {
-    console.error("Erreur de sauvegarde Mission:", err);
-    res.status(400).json({ error: "Erreur lors de la sauvegarde", details: err.message });
+    console.error("Erreur création mission:", err);
+    res.status(400).json({ error: "Impossible de créer la mission." });
   }
 });
 

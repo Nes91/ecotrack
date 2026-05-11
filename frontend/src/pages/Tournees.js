@@ -647,7 +647,7 @@ const [loadingTour, setLoadingTour] = useState(false);
 useEffect(() => {
   if (role === 'AGENT') {
     setLoadingTour(true);
-    API.get('/routes?status=ASSIGNED')
+    API.get('/routes')
       .then(r => {
         // Prend la première tournée assignée à cet agent
         const tour = r.data[0] || null;
