@@ -4,7 +4,6 @@ import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from "react-
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useOSRMRoute } from "../hooks/useOSRMRoute";
-
 // ── Role theming ───────────────────────────────────────────────────────────
 const ROLE_THEME = {
   ADMIN:   { label: "Administrateur", accent: "#8b5cf6" },
@@ -125,13 +124,14 @@ function MissionCard({ mission, index, onEdit, onDelete, onAdvance }) {
           </div>
         </div>
         <StatusBadge timeline={mission.timeline} />
-        {mission.totalDistanceKm && (
-          <div style={{ display:"flex", gap:8, marginTop:4 }}>
-            <StatPill icon="📏" value={`${mission.totalDistanceKm} km`} />
-            <StatPill icon="✅" value={`-${mission.improvement}`} color="#15803d" />
-            <StatPill icon="🗑️" value={`${mission.containersCount} bacs`} />
-          </div>
-        )}
+        {/* Après le StatusBadge existant, dans MissionCard */}
+{mission.totalDistanceKm && (
+  <div style={{ display:"flex", gap:8, marginTop:4 }}>
+    <StatPill icon="📏" value={`${mission.totalDistanceKm} km`} />
+    <StatPill icon="✅" value={`-${mission.improvement}`} color="#15803d" />
+    <StatPill icon="🗑️" value={`${mission.containersCount} bacs`} />
+  </div>
+)}
       </div>
 
       <div style={{ height:1, background:"#f3f4f6" }} />
@@ -256,7 +256,7 @@ function MapBounds({ stops, depot }) {
     if (points.length > 1) {
       map.fitBounds(points, { padding: [40, 40] });
     }
-  }, [stops, depot]);
+  }, [stops]);
 
   return null;
 }
@@ -277,6 +277,7 @@ function AgentRouteMap({ stops, depot }) {
     Number(validStops[0].container.longitude),
   ];
 
+  // Formate la durée en "X h Y min" ou "Y min"
   const formatDuration = (seconds) => {
     if (!seconds) return null;
     const h   = Math.floor(seconds / 3600);
@@ -284,6 +285,7 @@ function AgentRouteMap({ stops, depot }) {
     return h > 0 ? `${h}h ${min}min` : `${min} min`;
   };
 
+  // Formate la distance en "X.X km"
   const formatDistance = (meters) => {
     if (!meters) return null;
     return `${(meters / 1000).toFixed(1)} km`;
@@ -291,59 +293,145 @@ function AgentRouteMap({ stops, depot }) {
 
   return (
     <div>
+      {/* Stats de l'itinéraire */}
       {(duration || distance) && (
         <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
           {distance && (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 99, background: "#f0fdf4", border: "1.5px solid #bbf7d0" }}>
+            <div style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "6px 14px", borderRadius: 99,
+              background: "#f0fdf4", border: "1.5px solid #bbf7d0",
+            }}>
               <span style={{ fontSize: 14 }}>📏</span>
-              <span style={{ fontFamily: "'Roboto',sans-serif", fontSize: 13, fontWeight: 600, color: "#15803d" }}>{formatDistance(distance)}</span>
+              <span style={{ fontFamily: "'Roboto',sans-serif", fontSize: 13, fontWeight: 600, color: "#15803d" }}>
+                {formatDistance(distance)}
+              </span>
             </div>
           )}
           {duration && (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 14px", borderRadius: 99, background: "#fef9c3", border: "1.5px solid #fde047" }}>
+            <div style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "6px 14px", borderRadius: 99,
+              background: "#fef9c3", border: "1.5px solid #fde047",
+            }}>
               <span style={{ fontSize: 14 }}>⏱️</span>
-              <span style={{ fontFamily: "'Roboto',sans-serif", fontSize: 13, fontWeight: 600, color: "#854d0e" }}>{formatDuration(duration)} estimé</span>
+              <span style={{ fontFamily: "'Roboto',sans-serif", fontSize: 13, fontWeight: 600, color: "#854d0e" }}>
+                {formatDuration(duration)} estimé
+              </span>
             </div>
           )}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "6px 14px", borderRadius: 99,
+            background: "#f3f4f6", border: "1.5px solid #e5e7eb",
+          }}>
+            <span style={{ fontSize: 14 }}>📍</span>
+            <span style={{ fontFamily: "'Roboto',sans-serif", fontSize: 13, fontWeight: 600, color: "#374151" }}>
+              {validStops.length} arrêts
+            </span>
+          </div>
         </div>
       )}
 
-      <div style={{ borderRadius: 16, overflow: "hidden", border: "1.5px solid #e5e7eb", boxShadow: "0 4px 20px rgba(0,0,0,0.07)", height: 420, position: "relative" }}>
+      {/* Carte */}
+      <div style={{
+        borderRadius: 16, overflow: "hidden",
+        border: "1.5px solid #e5e7eb",
+        boxShadow: "0 4px 20px rgba(0,0,0,0.07)",
+        height: 420, position: "relative",
+      }}>
         {isLoading && (
-          <div style={{ position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)", zIndex: 1000, background: "#fff", borderRadius: 99, padding: "6px 14px", border: "1.5px solid #e5e7eb" }}>
+          <div style={{
+            position: "absolute", top: 12, left: "50%", transform: "translateX(-50%)",
+            zIndex: 1000, background: "#fff", borderRadius: 99,
+            padding: "6px 14px", border: "1.5px solid #e5e7eb",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+            fontFamily: "'Roboto',sans-serif", fontSize: 12, color: "#6b7280",
+          }}>
             ⏳ Calcul de l'itinéraire...
           </div>
         )}
 
         <MapContainer center={center} zoom={13} style={{ width: "100%", height: "100%" }}>
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution="© OpenStreetMap" />
+          <TileLayer
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            attribution="© OpenStreetMap"
+          />
 
-          {routeCoords.length > 0 && <Polyline positions={routeCoords} pathOptions={{ color: "#22c55e", weight: 5, opacity: 0.85 }} />}
+          {/* ✅ Vrai itinéraire sur les routes (OSRM) */}
+          {routeCoords.length > 0 && (
+            <Polyline
+              positions={routeCoords}
+              pathOptions={{
+                color: "#22c55e",
+                weight: 5,
+                opacity: 0.85,
+              }}
+            />
+          )}
 
-          <Marker position={[depot.lat, depot.lng]} icon={L.divIcon({ html: `<div style="background:#111827;color:white;border-radius:50%;width:34px;height:34px;display:flex;align-items:center;justify-content:center;font-size:16px;border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3);">🏁</div>`, iconSize: [34, 34], iconAnchor: [17, 17] })}>
+          {/* Ligne droite en fallback si OSRM pas encore chargé */}
+          {routeCoords.length === 0 && !isLoading && (
+            <Polyline
+              positions={[
+                [depot.lat, depot.lng],
+                ...validStops.map(s => [Number(s.container.latitude), Number(s.container.longitude)]),
+                [depot.lat, depot.lng],
+              ]}
+              pathOptions={{ color: "#22c55e", weight: 3, opacity: 0.5, dashArray: "8, 6" }}
+            />
+          )}
+
+          {/* Marqueur dépôt */}
+          <Marker
+            position={[depot.lat, depot.lng]}
+            icon={L.divIcon({
+              className: "",
+              html: `<div style="
+                background:#111827;color:white;border-radius:50%;
+                width:34px;height:34px;display:flex;align-items:center;
+                justify-content:center;font-size:16px;
+                border:2.5px solid #fff;
+                box-shadow:0 2px 8px rgba(0,0,0,0.3);
+              ">🏁</div>`,
+              iconSize: [34, 34],
+              iconAnchor: [17, 17],
+            })}
+          >
             <Popup><strong>Dépôt de départ</strong></Popup>
           </Marker>
 
-          {validStops.map((stop, i) => {
+          {/* Marqueurs numérotés */}
+          {validStops.map(stop => {
             const isDone = !!stop.collectedAt;
-            const isNext = !isDone && validStops.slice(0, i).every(s => s.collectedAt);
+            const isNext = !isDone && validStops
+              .slice(0, validStops.indexOf(stop))
+              .every(s => s.collectedAt);
+
             return (
               <Marker
                 key={stop.id}
                 position={[Number(stop.container.latitude), Number(stop.container.longitude)]}
                 icon={L.divIcon({
-                  html: `<div style="background:${isDone ? "#22c55e" : "#ef4444"};color:white;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;border:2.5px solid #fff;">${isDone ? "✓" : stop.order}</div>`,
+                  className: "",
+                  html: `<div style="
+                    background:${isDone ? "#22c55e" : isNext ? "#f59e0b" : "#ef4444"};
+                    color:white;border-radius:50%;
+                    width:32px;height:32px;display:flex;align-items:center;
+                    justify-content:center;font-weight:700;font-size:13px;
+                    border:2.5px solid #fff;
+                    box-shadow:0 2px 8px rgba(0,0,0,0.25);
+                  ">${isDone ? "✓" : stop.order}</div>`,
                   iconSize: [32, 32],
                   iconAnchor: [16, 16],
                 })}
               >
                 <Popup>
-                  <div>
+                  <div style={{ fontFamily: "'Roboto',sans-serif", minWidth: 170 }}>
                     <strong>Arrêt #{stop.order}</strong><br />
                     🗑️ {stop.container?.type}<br />
                     📍 {stop.container?.zone || "—"}<br />
-                    💧 {stop.container?.fillLevel}%
-                    <br />
+                    💧 Remplissage : {stop.container?.fillLevel}%<br />
                     {isDone
                       ? `✅ Collecté à ${new Date(stop.collectedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
                       : isNext ? "👉 Prochain arrêt" : "⏳ En attente"
@@ -358,6 +446,21 @@ function AgentRouteMap({ stops, depot }) {
           <MapBounds stops={validStops} depot={depot} />
         </MapContainer>
       </div>
+
+      {/* Légende */}
+      <div style={{ display: "flex", gap: 16, marginTop: 8, flexWrap: "wrap" }}>
+        {[
+          ["#22c55e", "Collecté"],
+          ["#f59e0b", "Prochain arrêt"],
+          ["#ef4444", "À collecter"],
+          ["#111827", "🏁 Dépôt"],
+        ].map(([color, label]) => (
+          <div key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ width: 10, height: 10, borderRadius: "50%", background: color }} />
+            <span style={{ fontFamily: "'Roboto',sans-serif", fontSize: 11, color: "#6b7280" }}>{label}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -365,14 +468,21 @@ function AgentRouteMap({ stops, depot }) {
 function AgentTourView({ tour, loading, onAdvanceStop }) {
   if (loading) return (
     <div style={{ textAlign: "center", padding: "64px 0" }}>
-      <p style={{ fontFamily: "'Roboto',sans-serif", fontSize: 16, color: "#9ca3af" }}>⏳ Chargement de votre tournée...</p>
+      <p style={{ fontFamily: "'Roboto',sans-serif", fontSize: 16, color: "#9ca3af" }}>
+        ⏳ Chargement de votre tournée...
+      </p>
     </div>
   );
 
   if (!tour) return (
     <div style={{ textAlign: "center", padding: "64px 0" }}>
       <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
-      <p style={{ fontFamily: "'Roboto',sans-serif", fontSize: 20, fontWeight: 700, color: "#111827" }}>Aucune tournée assignée</p>
+      <p style={{ fontFamily: "'Roboto',sans-serif", fontSize: 20, fontWeight: 700, color: "#111827" }}>
+        Aucune tournée assignée
+      </p>
+      <p style={{ fontFamily: "'Roboto',sans-serif", fontSize: 13, color: "#6b7280", marginTop: 8 }}>
+        Votre manager vous assignera une tournée prochainement.
+      </p>
     </div>
   );
 
@@ -383,49 +493,127 @@ function AgentTourView({ tour, loading, onAdvanceStop }) {
   const depot = { lat: 48.8566, lng: 2.3522 };
 
   return (
+      
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+
+      {/* Header tournée */}
       <div style={{ background: "#fff", borderRadius: 16, border: "1.5px solid #e5e7eb", padding: "20px 24px", boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
           <div>
-            <h2 style={{ fontFamily: "'Roboto',sans-serif", fontSize: 22, fontWeight: 700, color: "#111827", marginBottom: 4 }}>{tour.name}</h2>
-            <p style={{ fontFamily: "'Roboto',sans-serif", fontSize: 12, color: "#6b7280" }}>📅 {new Date(tour.createdAt).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}</p>
+            <h2 style={{ fontFamily: "'Roboto',sans-serif", fontSize: 22, fontWeight: 700, color: "#111827", marginBottom: 4 }}>
+              {tour.name}
+            </h2>
+            <p style={{ fontFamily: "'Roboto',sans-serif", fontSize: 12, color: "#6b7280" }}>
+              📅 {new Date(tour.createdAt).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <StatPill icon="📍" value={`${totalStops} arrêts`} />
+            <StatPill icon="📏" value={`${tour.totalDistanceKm} km`} />
+            {tour.improvement && <StatPill icon="✅" value={`-${tour.improvement}`} color="#15803d" />}
           </div>
         </div>
+        <div>
+        <h3 style={{ fontFamily: "'Roboto',sans-serif", fontSize: 16, fontWeight: 700, color: "#111827", marginBottom: 12 }}>
+          🗺️ Carte de l'itinéraire
+        </h3>
         <AgentRouteMap stops={tour.stops} depot={depot} />
+        <p style={{ fontFamily: "'Roboto',sans-serif", fontSize: 11, color: "#9ca3af", marginTop: 6 }}>
+          🟢 Collecté · 🔴 À collecter · -- Itinéraire
+        </p>
       </div>
 
-      <div>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-          <span style={{ fontFamily: "'Roboto',sans-serif", fontSize: 11, color: "#6b7280" }}>Progression : {doneStops}/{totalStops} collectes</span>
-          <span style={{ fontFamily: "'Roboto',sans-serif", fontSize: 11, fontWeight: 700, color: progressColor }}>{progress}%</span>
-        </div>
-        <div style={{ height: 8, borderRadius: 99, background: "#f3f4f6", overflow: "hidden" }}>
-          <div style={{ height: "100%", width: `${progress}%`, borderRadius: 99, background: progressColor, transition: "width 0.5s ease" }} />
+        {/* Barre de progression */}
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+            <span style={{ fontFamily: "'Roboto',sans-serif", fontSize: 11, color: "#6b7280" }}>
+              Progression : {doneStops}/{totalStops} collectes
+            </span>
+            <span style={{ fontFamily: "'Roboto',sans-serif", fontSize: 11, fontWeight: 700, color: progressColor }}>
+              {progress}%
+            </span>
+          </div>
+          <div style={{ height: 8, borderRadius: 99, background: "#f3f4f6", overflow: "hidden" }}>
+            <div style={{
+              height: "100%", width: `${progress}%`, borderRadius: 99,
+              background: progressColor, transition: "width 0.5s ease"
+            }} />
+          </div>
         </div>
       </div>
 
+      {/* Liste des arrêts */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <h3 style={{ fontFamily: "'Roboto',sans-serif", fontSize: 16, fontWeight: 700, color: "#111827" }}>Itinéraire</h3>
+        <h3 style={{ fontFamily: "'Roboto',sans-serif", fontSize: 16, fontWeight: 700, color: "#111827" }}>
+          Itinéraire
+        </h3>
+
         {tour.stops?.map((stop, i) => {
           const isDone = !!stop.collectedAt;
           const isNext = !isDone && tour.stops.slice(0, i).every(s => s.collectedAt);
 
           return (
             <div key={stop.id} style={{
-              background: "#fff", borderRadius: 14, border: `1.5px solid ${isNext ? "#22c55e" : isDone ? "#bbf7d0" : "#e5e7eb"}`,
-              padding: "16px 20px", display: "flex", alignItems: "center", gap: 16
+              background: "#fff", borderRadius: 14,
+              border: `1.5px solid ${isNext ? "#22c55e" : isDone ? "#bbf7d0" : "#e5e7eb"}`,
+              padding: "16px 20px",
+              boxShadow: isNext ? "0 4px 16px rgba(34,197,94,0.12)" : "0 2px 8px rgba(0,0,0,0.04)",
+              display: "flex", alignItems: "center", gap: 16,
+              opacity: isDone ? 0.6 : 1,
+              transition: "all 0.2s",
             }}>
-              <div style={{ width: 36, height: 36, borderRadius: "50%", background: isDone ? "#dcfce7" : isNext ? "#22c55e" : "#f3f4f6", color: isDone ? "#22c55e" : isNext ? "#fff" : "#9ca3af", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>
+
+              {/* Numéro d'ordre */}
+              <div style={{
+                width: 36, height: 36, borderRadius: "50%", flexShrink: 0,
+                background: isDone ? "#dcfce7" : isNext ? "#22c55e" : "#f3f4f6",
+                border: `2px solid ${isDone ? "#22c55e" : isNext ? "#16a34a" : "#e5e7eb"}`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontFamily: "'Roboto',sans-serif", fontSize: 14, fontWeight: 700,
+                color: isDone ? "#22c55e" : isNext ? "#fff" : "#9ca3af",
+              }}>
                 {isDone ? "✓" : stop.order}
               </div>
+
+              {/* Infos conteneur */}
               <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600 }}>{stop.container?.type || `Conteneur #${stop.containerId}`}</div>
-                <div style={{ fontSize: 11, color: "#6b7280" }}>
-                  📍 {stop.container?.zone} • 🗑️ {stop.container?.fillLevel}%
+                <div style={{ fontFamily: "'Roboto',sans-serif", fontSize: 15, fontWeight: 600, color: "#111827", marginBottom: 3 }}>
+                  {stop.container?.type || `Conteneur #${stop.containerId}`}
                 </div>
+                <div style={{ display: "flex", gap: 12 }}>
+                  <span style={{ fontFamily: "'Roboto',sans-serif", fontSize: 11, color: "#6b7280" }}>
+                    📍 {stop.container?.zone || "—"}
+                  </span>
+                  <span style={{ fontFamily: "'Roboto',sans-serif", fontSize: 11, color: "#6b7280" }}>
+                    🗑️ {stop.container?.fillLevel}% plein
+                  </span>
+                  {stop.distanceFromPrevious > 0 && (
+                    <span style={{ fontFamily: "'Roboto',sans-serif", fontSize: 11, color: "#6b7280" }}>
+                      +{stop.distanceFromPrevious} km
+                    </span>
+                  )}
+                </div>
+                {isDone && (
+                  <div style={{ fontFamily: "'Roboto',sans-serif", fontSize: 11, color: "#22c55e", marginTop: 3 }}>
+                    ✅ Collecté à {new Date(stop.collectedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                )}
               </div>
+
+              {/* Bouton valider */}
               {isNext && (
-                <button onClick={() => onAdvanceStop(tour.id, stop.id)} style={{ padding: "8px 16px", borderRadius: 9, background: "#22c55e", color: "#fff", border: "none", fontWeight: 600, cursor: "pointer" }}>
+                <button
+                  onClick={() => onAdvanceStop(tour.id, stop.id)}
+                  style={{
+                    padding: "8px 16px", borderRadius: 9,
+                    background: "#22c55e", border: "none", color: "#fff",
+                    fontFamily: "'Roboto',sans-serif", fontSize: 12,
+                    fontWeight: 600, cursor: "pointer",
+                    boxShadow: "0 2px 8px rgba(34,197,94,0.3)",
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = "#16a34a"}
+                  onMouseLeave={e => e.currentTarget.style.background = "#22c55e"}
+                >
                   ✓ Collecté
                 </button>
               )}
@@ -437,11 +625,11 @@ function AgentTourView({ tour, loading, onAdvanceStop }) {
   );
 }
 
-// ── Main Component ─────────────────────────────────────────────────────────
+// ── Main ───────────────────────────────────────────────────────────────────
 export default function Tournees({ user, missions: initialMissions }) {
   const role = localStorage.getItem('role');
-  const [missions, setMissions] = useState([]);
-  const [loading, setLoading] = useState(true);
+const [missions, setMissions] = useState([]);
+const [loading, setLoading] = useState(true);
   const [agents, setAgents] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalDelete, setModalDelete] = useState({ open: false, missionId: null });
@@ -451,23 +639,24 @@ export default function Tournees({ user, missions: initialMissions }) {
   const [toast, setToast] = useState(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
-  const [myTour, setMyTour] = useState(null);
-  const [loadingTour, setLoadingTour] = useState(false);
   const [in_, setIn] = useState(false);
+  const [myTour, setMyTour] = useState(null);
+const [loadingTour, setLoadingTour] = useState(false);
 
-  // Chargement tournée AGENT
-  useEffect(() => {
-    if (role === 'AGENT') {
-      setLoadingTour(true);
-      API.get('/tournees')
-        .then(r => {
-          const tour = r.data.find(t => t.agentId === parseInt(localStorage.getItem('userId') || '0')) || r.data[0] || null;
-          setMyTour(tour);
-        })
-        .catch(console.error)
-        .finally(() => setLoadingTour(false));
-    }
-  }, [role]);
+// Charge la tournée de l'agent au démarrage
+useEffect(() => {
+  if (role === 'AGENT') {
+    setLoadingTour(true);
+    API.get('/routes?status=ASSIGNED')
+      .then(r => {
+        // Prend la première tournée assignée à cet agent
+        const tour = r.data[0] || null;
+        setMyTour(tour);
+      })
+      .catch(console.error)
+      .finally(() => setLoadingTour(false));
+  }
+}, [role]);
 
   useEffect(() => { setTimeout(() => setIn(true), 60); }, []);
 
@@ -475,38 +664,37 @@ export default function Tournees({ user, missions: initialMissions }) {
     API.get("/agents").then(r => setAgents(r.data)).catch(console.error);
   }, []);
 
-  // Chargement des tournées
-  useEffect(() => {
-    API.get("/tournees")
-      .then(r => {
-        const formatted = r.data.map(route => ({
-          id: route.id,
-          title: route.name,
-          agent: route.agent ? `${route.agent.firstName} ${route.agent.lastName}` : "—",
-          totalDistanceKm: route.totalDistanceKm,
-          improvement: route.improvement,
-          containersCount: route.containersCount,
-          timeline: buildTimeline(route.status),
-          stops: route.stops || [],
-        }));
-        setMissions(formatted);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, []);
+useEffect(() => {
+  console.log("🔄 useEffect appelé"); // ← ajoute ça
+  API.get("/routes")
+    .then(r => {
+      console.log("📦 Données reçues:", r.data.length); // ← et ça
+      const formatted = r.data.map(route => ({
+        // ...
+      }));
+      setMissions(formatted);
+    })
+    .catch(console.error)
+    .finally(() => setLoading(false));
+}, []);
 
-  function buildTimeline(status) {
-    const steps = ["Initialisation", "Prise en compte", "Départ", "Fini"];
-    const statusMap = { PENDING: 0, ASSIGNED: 1, IN_PROGRESS: 2, COMPLETED: 3 };
-    const activeIndex = statusMap[status] ?? 0;
+// Fonction qui convertit le statut Prisma en timeline pour tes cards
+function buildTimeline(status) {
+  const steps = ["Initialisation", "Prise en compte", "Départ", "Fini"];
+  const statusMap = {
+    PENDING:     0,
+    ASSIGNED:    1,
+    IN_PROGRESS: 2,
+    COMPLETED:   3,
+  };
+  const activeIndex = statusMap[status] ?? 0; // ← si status inconnu, index 0
 
-    return steps.map((step, i) => ({
-      step,
-      time: i < activeIndex ? new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
-      status: i < activeIndex ? "done" : i === activeIndex ? "active" : "pending",
-    }));
-  }
-
+  return steps.map((step, i) => ({
+    step,
+    time:   i < activeIndex ? new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "",
+    status: i < activeIndex ? "done" : i === activeIndex ? "active" : "pending",
+  }));
+}
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
     setErrors({ ...errors, [e.target.name]: "" });
@@ -518,109 +706,137 @@ export default function Tournees({ user, missions: initialMissions }) {
   };
 
   const handleAdvanceStop = async (tourId, stopId) => {
-    try {
-      await API.patch(`/tournees/${tourId}/stops/${stopId}/collect`);
-      setMyTour(prev => ({
-        ...prev,
-        stops: prev.stops.map(s => s.id === stopId ? { ...s, collectedAt: new Date().toISOString() } : s)
-      }));
-      showToast("Collecte validée ✅");
-    } catch (err) {
-      showToast("Erreur lors de la validation ❌");
-      console.error(err);
-    }
-  };
+  try {
+    await API.patch(`/routes/${tourId}/stops/${stopId}/collect`);
+    
+    // Met à jour localement
+    setMyTour(prev => ({
+      ...prev,
+      stops: prev.stops.map(s =>
+        s.id === stopId
+          ? { ...s, collectedAt: new Date().toISOString() }
+          : s
+      ),
+    }));
 
-  const handleSave = async () => {
-    const newErrors = {};
-    if (!form.title) newErrors.title = true;
-    if (!form.agent) newErrors.agent = true;
-    if (Object.keys(newErrors).length) { setErrors(newErrors); return; }
+    showToast("Collecte validée ✅");
+  } catch (err) {
+    showToast("Erreur lors de la validation ❌");
+    console.error(err);
+  }
+};
 
-    try {
-      const agent = agents.find(a => `${a.firstName} ${a.lastName}` === form.agent);
-      if (!agent) throw new Error("Agent non trouvé");
+const handleSave = async () => {
+  console.log("🔥 handleSave appelé");
+  const newErrors = {};
+  if (!form.title) newErrors.title = true;
+  if (!form.agent) newErrors.agent = true;
+  if (Object.keys(newErrors).length) { setErrors(newErrors); return; }
 
-      if (editingMission) {
-        await API.put(`/tournees/${editingMission.id}`, { name: form.title });
-        showToast("Mission modifiée !");
-      } else {
-        await API.post('/tournees', { agentId: agent.id, name: form.title });
-        showToast(`Tournée "${form.title}" créée ! 🚀`);
-      }
+  try {
+    if (editingMission) {
+      // Modification
+      await API.put(`/routes/${editingMission.id}`, {
+        name: form.title,
+      });
+      setMissions(prev => prev.map(m =>
+        m.id === editingMission.id
+          ? { ...m, title: form.title }
+          : m
+      ));
+      showToast("Mission modifiée !");
 
-      const updated = await API.get("/tournees");
+    } else {
+      const depot = { lat: 48.8566, lng: 2.3522, name: "Dépôt Central" };
+      await API.post("/routes/optimize", {
+        depot,
+        fillThreshold: 70,
+        assignedToId: agents.find(
+          a => `${a.firstName} ${a.lastName}` === form.agent
+        )?.id,
+      });
+
+      // Recharge toutes les missions depuis l'API
+      const updated = await API.get("/routes");
       const formatted = updated.data.map(route => ({
-        id: route.id,
-        title: route.name,
-        agent: route.agent ? `${route.agent.firstName} ${route.agent.lastName}` : "—",
+        id:              route.id,
+        title:           route.name,
+        agent:           route.agent ? `${route.agent.firstName} ${route.agent.lastName}` : "—",
         totalDistanceKm: route.totalDistanceKm,
-        improvement: route.improvement,
+        improvement:     route.improvement,
         containersCount: route.containersCount,
-        timeline: buildTimeline(route.status),
-        stops: route.stops || [],
+        timeline:        buildTimeline(route.status),
+        stops:           route.stops || [],
       }));
       setMissions(formatted);
-    } catch (err) {
-      console.error(err);
-      showToast("Erreur lors de la sauvegarde ❌");
+      showToast(`Tournée créée ! 🚀`);
     }
 
-    setModalOpen(false);
-    setEditingMission(null);
-    setForm({ title: "", agent: "" });
-  };
+  } catch (err) {
+    showToast("Erreur lors de la sauvegarde ❌");
+    console.error(err);
+  }
 
+  setModalOpen(false);
+  setEditingMission(null);
+  setForm({ title: "", agent: "" });
+};
   const handleEdit = (mission) => {
     setEditingMission(mission);
     setForm({ title: mission.title, agent: mission.agent });
     setModalOpen(true);
   };
 
-  const handleDelete = async () => {
-    try {
-      await API.delete(`/tournees/${modalDelete.missionId}`);
-      setMissions(prev => prev.filter(m => m.id !== modalDelete.missionId));
-      showToast("Mission supprimée.");
-    } catch (err) {
-      showToast("Erreur lors de la suppression ❌");
-    }
-    setModalDelete({ open: false, missionId: null });
-  };
+const handleDelete = async () => {
+  try {
+    await API.delete(`/routes/${modalDelete.missionId}`);
+    setMissions(prev => prev.filter(m => m.id !== modalDelete.missionId));
+    showToast("Mission supprimée.");
+  } catch (err) {
+    showToast("Erreur lors de la suppression ❌");
+  }
+  setModalDelete({ open: false, missionId: null });
+};
 
-  const advanceStep = async (missionId) => {
-    try {
-      const mission = missions.find(m => m.id === missionId);
-      const activeIndex = mission.timeline.findIndex(t => t.status === "active");
-      const statusMap = ["PENDING", "ASSIGNED", "IN_PROGRESS", "COMPLETED"];
-      const newStatus = statusMap[activeIndex + 1] || "COMPLETED";
+const advanceStep = async (missionId) => {
+  try {
+    // Met à jour le statut côté API
+    const mission = missions.find(m => m.id === missionId);
+    const timeline = mission.timeline;
+    const activeIndex = timeline.findIndex(t => t.status === "active");
 
-      await API.patch(`/tournees/${missionId}`, { status: newStatus });
+    const statusMap = ["PENDING", "ASSIGNED", "IN_PROGRESS", "COMPLETED"];
+    const newStatus = statusMap[activeIndex + 1] || "COMPLETED";
 
-      setMissions(prev => prev.map(m => {
-        if (m.id !== missionId) return m;
-        const tl = [...m.timeline];
-        const ai = tl.findIndex(t => t.status === "active");
-        if (ai !== -1) {
-          tl[ai] = { ...tl[ai], status: "done", time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
-          if (ai + 1 < tl.length) tl[ai + 1] = { ...tl[ai + 1], status: "active" };
-        }
-        return { ...m, timeline: tl };
-      }));
-    } catch (err) {
-      showToast("Erreur lors de la mise à jour ❌");
-    }
-  };
+    await API.patch(`/routes/${missionId}`, { status: newStatus });
 
-  const filtered = missions.filter(m => {
-    const matchSearch = `${m.title} ${m.agent}`.toLowerCase().includes(search.toLowerCase());
-    const isDone = m.timeline.every(t => t.status === "done");
-    const isActive = m.timeline.some(t => t.status === "active");
-    if (filter === "done" && !isDone) return false;
-    if (filter === "active" && !isActive) return false;
-    if (filter === "pending" && (isDone || isActive)) return false;
-    return matchSearch;
-  });
+    // Met à jour localement (ton code existant)
+    setMissions(prev => prev.map(m => {
+      if (m.id !== missionId) return m;
+      const tl = [...m.timeline];
+      const ai = tl.findIndex(t => t.status === "active");
+      if (ai !== -1) {
+        tl[ai] = { ...tl[ai], status: "done", time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) };
+        if (ai + 1 < tl.length) tl[ai + 1] = { ...tl[ai + 1], status: "active" };
+      }
+      return { ...m, timeline: tl };
+    }));
+  } catch (err) {
+    showToast("Erreur lors de la mise à jour ❌");
+  }
+};
+
+const filtered = missions.filter(m => {
+  if (!m.timeline) return false;
+
+  const matchSearch = `${m.title} ${m.agent}`.toLowerCase().includes(search.toLowerCase());
+  const isDone    = m.timeline.every(t => t.status === "done");
+  const isActive  = m.timeline.some(t => t.status === "active");
+  if (filter === "done"    && !isDone)              return false;
+  if (filter === "active"  && !isActive)            return false;
+  if (filter === "pending" && (isDone || isActive)) return false;
+  return matchSearch;
+});
 
   return (
     <>
@@ -629,6 +845,7 @@ export default function Tournees({ user, missions: initialMissions }) {
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         input::placeholder { color: #d1d5db; font-family: 'Roboto', sans-serif; }
         select option { background: #fff; color: #111827; }
+        @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes rowIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
         @keyframes slideDown { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
         @keyframes shimmer { 0% { background-position:-300% center; } 100% { background-position:300% center; } }
@@ -636,20 +853,35 @@ export default function Tournees({ user, missions: initialMissions }) {
       `}</style>
 
       <div style={{ minHeight:"100vh", background:"linear-gradient(150deg,#f0fdf4 0%,#fafafa 50%,#f0fdf4 100%)", fontFamily:"'Roboto',sans-serif", position:"relative" }}>
-        {/* Background décor */}
+
         <div style={{ position:"absolute", inset:0, pointerEvents:"none", backgroundImage:"radial-gradient(circle, #bbf7d0 1px, transparent 1px)", backgroundSize:"28px 28px", opacity:0.45 }} />
         <div style={{ position:"absolute", top:0, left:0, right:0, height:3, background:"linear-gradient(90deg,#16a34a,#22c55e,#4ade80,#22c55e,#16a34a)", backgroundSize:"300% auto", animation:"shimmer 4s linear infinite" }} />
 
         <div style={{ position:"relative", zIndex:1, maxWidth:1060, margin:"0 auto", padding:"48px 24px 64px" }}>
+
           {/* Header */}
           <div style={{ marginBottom:36, opacity:in_?1:0, transform:in_?"none":"translateY(-10px)", transition:"all 0.65s cubic-bezier(0.22,1,0.36,1)" }}>
-            <h1 style={{ fontFamily:"'Roboto',sans-serif", fontSize:"clamp(30px,4vw,48px)", fontWeight:700, color:"#111827", letterSpacing:"-0.3px", lineHeight:1.1 }}>
-              Gestion des <span style={{ background:"linear-gradient(135deg,#15803d,#22c55e,#16a34a)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>Tournées</span>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:6, padding:"3px 11px", borderRadius:99, background:"#dcfce7", border:"1px solid #bbf7d0" }}>
+                <div style={{ width:5, height:5, borderRadius:"50%", background:"#22c55e", animation:"blink 2s ease-in-out infinite" }} />
+                <span style={{ fontFamily:"'Roboto',sans-serif", fontSize:10, fontWeight:600, color:"#15803d", letterSpacing:"0.12em", textTransform:"uppercase" }}>
+                  {missions.length} tournée{missions.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+            </div>
+            <h1 style={{ fontFamily:"'Roboto',sans-serif", fontSize:"clamp(30px,4vw,48px)", fontWeight:700, color:"#111827", letterSpacing:"-0.3px", lineHeight:1.1, marginBottom:8 }}>
+              Gestion des{" "}
+              <span style={{ background:"linear-gradient(135deg,#15803d,#22c55e,#16a34a)", backgroundSize:"200% auto", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", backgroundClip:"text", animation:"shimmer 4s linear infinite" }}>
+                Tournées
+              </span>
             </h1>
+            <p style={{ fontFamily:"'Roboto',sans-serif", fontSize:13, color:"#6b7280", fontWeight:400 }}>
+              Créez et suivez les missions et tournées en temps réel
+            </p>
           </div>
 
           {/* Toolbar */}
-          <div style={{ background:"#fff", borderRadius:14, border:"1.5px solid #e5e7eb", padding:"14px 18px", marginBottom:20, display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap" }}>
+          <div style={{ background:"#fff", borderRadius:14, border:"1.5px solid #e5e7eb", boxShadow:"0 2px 12px rgba(0,0,0,0.05)", padding:"14px 18px", marginBottom:20, display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, flexWrap:"wrap" }}>
             <div style={{ display:"flex", alignItems:"center", gap:6 }}>
               {[["all","Toutes"],["active","En cours"],["pending","En attente"],["done","Terminées"]].map(([val,lab]) => (
                 <FilterBtn key={val} active={filter===val} onClick={() => setFilter(val)} label={lab} />
@@ -657,49 +889,95 @@ export default function Tournees({ user, missions: initialMissions }) {
             </div>
             <div style={{ display:"flex", alignItems:"center", gap:10 }}>
               <SearchBox value={search} onChange={setSearch} />
-              <button onClick={() => { setEditingMission(null); setForm({ title:"", agent:"" }); setModalOpen(true); }}
-                style={{ padding:"8px 16px", borderRadius:9, background:"#22c55e", color:"#fff", border:"none", fontWeight:600, cursor:"pointer" }}>
-                + Nouvelle mission
+              <button
+                onClick={() => { setEditingMission(null); setForm({ title:"", agent:"" }); setModalOpen(true); }}
+                style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, background:"#22c55e", border:"none", color:"#fff", fontFamily:"'Roboto',sans-serif", fontSize:13, fontWeight:600, cursor:"pointer", boxShadow:"0 2px 8px rgba(34,197,94,0.25)", transition:"all 0.2s", letterSpacing:"0.03em" }}
+                onMouseEnter={e => { e.currentTarget.style.background="#16a34a"; e.currentTarget.style.boxShadow="0 4px 16px rgba(34,197,94,0.35)"; }}
+                onMouseLeave={e => { e.currentTarget.style.background="#22c55e"; e.currentTarget.style.boxShadow="0 2px 8px rgba(34,197,94,0.25)"; }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Nouvelle mission
               </button>
             </div>
           </div>
-
-          {/* Contenu */}
+          
+          {/* Grid */}
           {role === 'AGENT' ? (
-            <AgentTourView tour={myTour} loading={loadingTour} onAdvanceStop={handleAdvanceStop} />
-          ) : filtered.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "80px 0" }}>Aucune mission trouvée</div>
-          ) : (
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(300px,1fr))", gap:18 }}>
-              {filtered.map((mission, i) => (
-                <MissionCard key={mission.id} mission={mission} index={i}
-                  onEdit={handleEdit} onDelete={(id) => setModalDelete({ open:true, missionId:id })} onAdvance={advanceStep} />
-              ))}
-            </div>
-          )}
+  <AgentTourView
+    tour={myTour}
+    loading={loadingTour}
+    onAdvanceStop={handleAdvanceStop}
+  />
+) : (
+  filtered.length === 0 ? (
+    <div style={{ textAlign: "center", padding: "64px 0" }}>
+      <p style={{ fontFamily: "'Roboto',sans-serif", fontSize: 20, color: "#9ca3af", fontWeight: 600 }}>
+        Aucune mission trouvée
+      </p>
+    </div>
+  ) : (
+    <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(300px,1fr))", gap:18 }}>
+      {filtered.map((mission, i) => (
+        <MissionCard key={mission.id} mission={mission} index={i}
+          onEdit={handleEdit}
+          onDelete={(id) => setModalDelete({ open:true, missionId:id })}
+          onAdvance={advanceStep}
+        />
+      ))}
+    </div>
+  )
+)}
+          
         </div>
       </div>
 
-      {/* Modals */}
+      {/* Modal create/edit */}
       {modalOpen && (
         <Modal title={editingMission ? "Modifier la mission" : "Nouvelle mission"} onClose={() => { setModalOpen(false); setEditingMission(null); }}>
           <div style={{ display:"flex", flexDirection:"column", gap:14, marginBottom:22 }}>
-            <Field label="Titre de la mission" name="title" value={form.title} onChange={handleChange} />
-            <Field label="Agent assigné" name="agent" value={form.agent} onChange={handleChange} type="select" options={agents} />
+            <div style={{ border: errors.title ? "1.5px solid #fca5a5" : "none", borderRadius:10 }}>
+              <Field label="Titre de la mission" name="title" value={form.title} onChange={handleChange} />
+            </div>
+            <div style={{ border: errors.agent ? "1.5px solid #fca5a5" : "none", borderRadius:10 }}>
+              <Field label="Agent assigné" name="agent" value={form.agent} onChange={handleChange} type="select" options={agents} />
+            </div>
           </div>
           <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
-            <button onClick={() => { setModalOpen(false); setEditingMission(null); }} style={{ padding:"9px 18px", border:"1.5px solid #e5e7eb", borderRadius:9 }}>Annuler</button>
-            <button onClick={handleSave} style={{ padding:"9px 20px", background:"#22c55e", color:"white", border:"none", borderRadius:9, fontWeight:600 }}>Enregistrer</button>
+            <button onClick={() => { setModalOpen(false); setEditingMission(null); }}
+              style={{ padding:"9px 18px", borderRadius:9, border:"1.5px solid #e5e7eb", background:"#fff", color:"#6b7280", fontFamily:"'Roboto',sans-serif", fontSize:13, fontWeight:500, cursor:"pointer" }}
+              onMouseEnter={e => e.currentTarget.style.background="#f9fafb"} onMouseLeave={e => e.currentTarget.style.background="#fff"}
+            >
+              Annuler
+            </button>
+            <button onClick={handleSave}
+              style={{ padding:"9px 20px", borderRadius:9, background:"#22c55e", border:"none", color:"#fff", fontFamily:"'Roboto',sans-serif", fontSize:13, fontWeight:600, cursor:"pointer", boxShadow:"0 2px 8px rgba(34,197,94,0.25)", transition:"all 0.2s" }}
+              onMouseEnter={e => e.currentTarget.style.background="#16a34a"} onMouseLeave={e => e.currentTarget.style.background="#22c55e"}
+            >
+              {editingMission ? "✎  Enregistrer" : "+  Créer la mission"}
+            </button>
           </div>
         </Modal>
       )}
 
+      {/* Modal delete */}
       {modalDelete.open && (
-        <Modal title="Supprimer la mission ?" onClose={() => setModalDelete({ open: false, missionId: null })}>
-          <p style={{ marginBottom: 22, color: "#6b7280" }}>Cette action est irréversible.</p>
+        <Modal title="Supprimer la mission ?" onClose={() => setModalDelete({ open:false, missionId:null })}>
+          <p style={{ fontFamily:"'Roboto',sans-serif", fontSize:13, color:"#6b7280", marginBottom:22 }}>
+            Cette action est irréversible. La mission sera définitivement supprimée.
+          </p>
           <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
-            <button onClick={() => setModalDelete({ open: false, missionId: null })} style={{ padding:"9px 18px", border:"1.5px solid #e5e7eb", borderRadius:9 }}>Annuler</button>
-            <button onClick={handleDelete} style={{ padding:"9px 18px", background:"#fee2e2", color:"#dc2626", border:"none", borderRadius:9 }}>Supprimer</button>
+            <button onClick={() => setModalDelete({ open:false, missionId:null })}
+              style={{ padding:"9px 18px", borderRadius:9, border:"1.5px solid #e5e7eb", background:"#fff", color:"#6b7280", fontFamily:"'Roboto',sans-serif", fontSize:13, cursor:"pointer" }}
+              onMouseEnter={e => e.currentTarget.style.background="#f9fafb"} onMouseLeave={e => e.currentTarget.style.background="#fff"}
+            >
+              Annuler
+            </button>
+            <button onClick={handleDelete}
+              style={{ padding:"9px 18px", borderRadius:9, background:"#fef2f2", border:"1.5px solid #fca5a5", color:"#dc2626", fontFamily:"'Roboto',sans-serif", fontSize:13, fontWeight:600, cursor:"pointer", transition:"all 0.2s" }}
+              onMouseEnter={e => { e.currentTarget.style.background="#fee2e2"; }} onMouseLeave={e => { e.currentTarget.style.background="#fef2f2"; }}
+            >
+              Supprimer
+            </button>
           </div>
         </Modal>
       )}
@@ -713,7 +991,8 @@ function FilterBtn({ active, onClick, label }) {
   const [hov, setHov] = useState(false);
   return (
     <button onClick={onClick}
-      style={{ padding:"5px 12px", borderRadius:8, border:`1.5px solid ${active?"#22c55e":"#e5e7eb"}`, background: active?"#22c55e": hov?"#f0fdf4":"#fff", color: active?"#fff": hov?"#15803d":"#6b7280", cursor:"pointer" }}>
+      onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
+      style={{ padding:"5px 12px", borderRadius:8, border:`1.5px solid ${active?"#22c55e":"#e5e7eb"}`, background: active?"#22c55e": hov?"#f0fdf4":"#fff", color: active?"#fff": hov?"#15803d":"#6b7280", fontFamily:"'Roboto',sans-serif", fontSize:11, fontWeight:600, cursor:"pointer", transition:"all 0.18s", letterSpacing:"0.04em" }}>
       {label}
     </button>
   );
@@ -721,7 +1000,13 @@ function FilterBtn({ active, onClick, label }) {
 
 function StatPill({ icon, value, color = "#6b7280" }) {
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 99, background: "#f9fafb", border: "1.5px solid #e5e7eb", color, fontSize:10, fontWeight:600 }}>
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 4,
+      padding: "2px 8px", borderRadius: 99,
+      background: "#f9fafb", border: "1.5px solid #e5e7eb",
+      fontFamily: "'Roboto', sans-serif", fontSize: 10,
+      fontWeight: 600, color,
+    }}>
       {icon} {value}
     </span>
   );
