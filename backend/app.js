@@ -619,18 +619,14 @@ app.get('/tournees', authMiddleware, authorize(['ADMIN', 'MANAGER', 'AGENT']), a
     const tournees = await prisma.route.findMany({
       where,
       include: { 
-        agent: { select: { id: true, firstName: true, lastName: true } }, 
-        // Vérifiez que ce champ existe bien dans votre schema.prisma généré
-        stops: { 
-          include: { container: true }
-        }
+        agent: { select: { firstName: true, lastName: true } }, 
+        stops: { include: { container: true }, orderBy: { order: 'asc' } }
       },
-      orderBy: { id: 'desc' } // Utilisation de 'id' si 'createdAt' n'existe pas dans votre schéma
+      orderBy: { createdAt: 'desc' }
     });
     res.json(tournees);
   } catch (err) {
-    console.error("Erreur Prisma détaillée:", err);
-    res.status(400).json({ error: 'Erreur récupération tournées', details: err.message });
+    res.status(500).json({ error: 'Erreur récupération tournées' });
   }
 });
 
