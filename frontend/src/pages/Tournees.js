@@ -747,6 +747,7 @@ const handleSave = async () => {
       showToast("Mission modifiée !");
 
     } else {
+
       const depot = { lat: 48.8566, lng: 2.3522, name: "Dépôt Central" };
       await API.post("/routes/optimize", {
         depot,
