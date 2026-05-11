@@ -609,7 +609,6 @@ app.put('/signalements/:id', authMiddleware, upload.single('photo'), async (req,
     res.status(500).json({ error: 'Erreur modification signalement', details: err.message });
   }
 });
-
 // ─────────────────────────────────────────────────────────────────────────────
 // TOURNÉES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -982,28 +981,31 @@ app.get('/missions/mes-missions', authMiddleware, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // MISSIONS
 // ─────────────────────────────────────────────────────────────────────────────
+
 app.post('/missions', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
   const { title, description, agentId } = req.body;
 
-  // Validation minimale
+  // Validation des données entrantes
   if (!title || !agentId) {
-    return res.status(400).json({ error: 'Le titre et l\'agent sont obligatoires' });
+    return res.status(400).json({ error: "Le titre et l'agent sont obligatoires." });
   }
 
   try {
     const mission = await prisma.mission.create({
       data: {
         title,
-        description,
-        agentId: parseInt(agentId),
-        adminId: req.userId, // L'ID de l'admin connecté (via authMiddleware)
-        status: 'PENDING'
+        description: description || "",
+        status: 'PENDING',
+        // Conversion forcée en entier pour satisfaire le schéma Prisma
+        agentId: parseInt(agentId), 
+        // Récupération automatique de l'ID de l'admin depuis le token (via authMiddleware)
+        adminId: req.userId 
       }
     });
     res.status(201).json(mission);
   } catch (err) {
-    console.error("Erreur création mission:", err);
-    res.status(500).json({ error: 'Erreur lors de la sauvegarde' });
+    console.error("Erreur de sauvegarde Mission:", err);
+    res.status(400).json({ error: "Erreur lors de la sauvegarde", details: err.message });
   }
 });
 
