@@ -979,28 +979,31 @@ app.get('/missions/mes-missions', authMiddleware, async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MISSIONS
+// ─────────────────────────────────────────────────────────────────────────────
 app.post('/missions', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
   const { title, description, agentId } = req.body;
-  if (!title || !agentId)
-    return res.status(400).json({ error: 'Le titre et l\'agent sont obligatoires.' });
+
+  // Validation minimale
+  if (!title || !agentId) {
+    return res.status(400).json({ error: 'Le titre et l\'agent sont obligatoires' });
+  }
+
   try {
     const mission = await prisma.mission.create({
       data: {
         title,
-        description: description || null,
+        description,
         agentId: parseInt(agentId),
-        adminId: req.userId,
-        status: 'PENDING',
-      },
-      include: {
-        agent: { select: { id: true, firstName: true, lastName: true } },
-        admin: { select: { id: true, firstName: true, lastName: true } },
-      },
+        adminId: req.userId, // L'ID de l'admin connecté (via authMiddleware)
+        status: 'PENDING'
+      }
     });
     res.status(201).json(mission);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Erreur lors de la sauvegarde de la mission.' });
+    console.error("Erreur création mission:", err);
+    res.status(500).json({ error: 'Erreur lors de la sauvegarde' });
   }
 });
 
