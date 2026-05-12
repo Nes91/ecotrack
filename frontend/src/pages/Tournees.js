@@ -686,12 +686,17 @@ useEffect(() => {
   }, []);
 
 useEffect(() => {
-  console.log("🔄 useEffect appelé"); // ← ajoute ça
   API.get("/routes")
     .then(r => {
-      console.log("📦 Données reçues:", r.data.length); // ← et ça
       const formatted = r.data.map(route => ({
-        // ...
+        id:              route.id,
+        title:           route.name,
+        agent:           route.agent ? `${route.agent.firstName} ${route.agent.lastName}` : "—",
+        totalDistanceKm: route.totalDistanceKm,
+        improvement:     route.improvement,
+        containersCount: route.containersCount,
+        timeline:        buildTimeline(route.status),
+        stops:           route.stops || [],
       }));
       setMissions(formatted);
     })
