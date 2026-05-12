@@ -8,7 +8,7 @@ import jwt from 'jsonwebtoken';
 
 const app = express();
 const prisma = new PrismaClient();
-const PORT = 8000;
+const PORT = process.env.PORT || 8000;
 const SECRET_KEY = process.env.SECRET_KEY || 'secret';
 
 // Configuration multer
@@ -1476,6 +1476,10 @@ app.put('/missions/:id/terminer', authMiddleware, authorize(['AGENT']), async (r
     console.error(err);
     res.status(500).json({ error: 'Erreur lors de la terminaison.' });
   }
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
 
 export default app;
