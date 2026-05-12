@@ -1436,4 +1436,46 @@ app.post('/defis/:id/inscrire', authMiddleware, async (req, res) => {
   }
 });
 
+// ─── DASHBOARD AGENT ──────────────────────────────────────────────────────────
+app.get('/dashboard/agent', authMiddleware, authorize(['AGENT']), async (req, res) => {
+  try {
+    const [tournees, containers] = await Promise.all([
+      prisma.route.findMany({
+        where: { agentId: req.userId },
+        include: {
+          stops: { include: { container: true } },
+        },
+      }),
+      prisma.route.findMany({
+        where: { agentId: req.userId, status: { in: ['ASSIGNED', 'IN_PROGRESS'] } },
+        include: { stops: true },
+      }),
+    ]);
+
+    const nbContainers = containers.reduce((acc, r) => acc + (r.stops?.length || 0), 0);
+
+    res.json({
+      nbTournees:   tournees.length,
+      nbContainers: nbContainers,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur dashboard agent.' });
+  }
+});
+
+// ─── MISSIONS : Terminer ──────────────────────────────────────────────────────
+app.put('/missions/:id/terminer', authMiddleware, authorize(['AGENT']), async (req, res) => {
+  try {
+    const updated = await prisma.mission.update({
+      where: { id: parseInt(req.params.id) },
+      data: { status: 'DONE' },
+    });
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur lors de la terminaison.' });
+  }
+});
+
 export default app;
