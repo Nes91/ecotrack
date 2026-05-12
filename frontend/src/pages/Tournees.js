@@ -748,6 +748,8 @@ function buildTimeline(status) {
 };
 
 const handleSave = async () => {
+  console.log("form.agent:", form.agent);
+  console.log("agents:", agents);
   const newErrors = {};
   if (!form.title) newErrors.title = true;
   if (!form.agent) newErrors.agent = true;
