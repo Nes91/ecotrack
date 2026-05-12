@@ -182,21 +182,42 @@ function Field({ label, name, value, onChange, type = "text", options }) {
     outline:"none", boxShadow: focused ? "0 0 0 3px rgba(34,197,94,0.1)" : "0 1px 2px rgba(0,0,0,0.04)",
     transition:"all 0.2s", width:"100%",
   };
+
   return (
-    <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-      <label style={{ fontFamily:"'Roboto',sans-serif", fontSize:10, fontWeight:600, color:"#9ca3af", letterSpacing:"0.12em", textTransform:"uppercase" }}>
-        {label}
-      </label>
-      {type === "select" ? (
-        <select name={name} value={value} onChange={onChange} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} style={baseStyle}>
-          <option value="">— Sélectionner —</option>
-          {(options||[]).map(a => (
-            <option key={a.id} value={`${a.firstName} ${a.lastName}`}>{a.firstName} {a.lastName}</option>
-          ))}
-        </select>
-      ) : (
-        <input name={name} value={value} onChange={onChange} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} style={baseStyle} placeholder={label} />
-      )}
+    <div style={{ border: (options && options.error) ? "1.5px solid #fca5a5" : "none", borderRadius:10 }}>
+      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+        <label style={{ fontFamily:"'Roboto',sans-serif", fontSize:10, fontWeight:600, color:"#9ca3af", letterSpacing:"0.12em", textTransform:"uppercase" }}>
+          {label}
+        </label>
+
+        {type === "select" ? (
+          <select
+            name={name}
+            value={value}
+            onChange={onChange}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            style={{ padding:"10px 14px", borderRadius:10, background: focused ? "#fff" : "#f9fafb", border: `1.5px solid ${focused ? "#22c55e" : "#e5e7eb"}`, color:"#111827", fontFamily:"'Roboto',sans-serif", fontSize:14, outline:"none", width:"100%" }}
+          >
+            <option value="">{options && options.placeholder ? options.placeholder : "— Sélectionner —"}</option>
+            {options && options.items && options.items.map(opt => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            name={name}
+            value={value}
+            onChange={onChange}
+            type={type}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            style={baseStyle}
+          />
+        )}
+      </div>
     </div>
   );
 }
@@ -934,33 +955,57 @@ const filtered = missions.filter(m => {
         </div>
       </div>
 
-      {/* Modal create/edit */}
-      {modalOpen && (
-        <Modal title={editingMission ? "Modifier la mission" : "Nouvelle mission"} onClose={() => { setModalOpen(false); setEditingMission(null); }}>
-          <div style={{ display:"flex", flexDirection:"column", gap:14, marginBottom:22 }}>
-            <div style={{ border: errors.title ? "1.5px solid #fca5a5" : "none", borderRadius:10 }}>
-              <Field label="Titre de la mission" name="title" value={form.title} onChange={handleChange} />
-            </div>
-            <div style={{ border: errors.agent ? "1.5px solid #fca5a5" : "none", borderRadius:10 }}>
-              <Field label="Agent assigné" name="agent" value={form.agent} onChange={handleChange} type="select" options={agents} />
-            </div>
-          </div>
-          <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
-            <button onClick={() => { setModalOpen(false); setEditingMission(null); }}
-              style={{ padding:"9px 18px", borderRadius:9, border:"1.5px solid #e5e7eb", background:"#fff", color:"#6b7280", fontFamily:"'Roboto',sans-serif", fontSize:13, fontWeight:500, cursor:"pointer" }}
-              onMouseEnter={e => e.currentTarget.style.background="#f9fafb"} onMouseLeave={e => e.currentTarget.style.background="#fff"}
-            >
-              Annuler
-            </button>
-            <button onClick={handleSave}
-              style={{ padding:"9px 20px", borderRadius:9, background:"#22c55e", border:"none", color:"#fff", fontFamily:"'Roboto',sans-serif", fontSize:13, fontWeight:600, cursor:"pointer", boxShadow:"0 2px 8px rgba(34,197,94,0.25)", transition:"all 0.2s" }}
-              onMouseEnter={e => e.currentTarget.style.background="#16a34a"} onMouseLeave={e => e.currentTarget.style.background="#22c55e"}
-            >
-              {editingMission ? "✎  Enregistrer" : "+  Créer la mission"}
-            </button>
-          </div>
-        </Modal>
-      )}
+{/* Modal create/edit */}
+{modalOpen && (
+  <Modal title={editingMission ? "Modifier la mission" : "Nouvelle mission"} onClose={() => { setModalOpen(false); setEditingMission(null); }}>
+    <div style={{ display:"flex", flexDirection:"column", gap:14, marginBottom:22 }}>
+      
+      {/* Titre */}
+      <div style={{ border: errors.title ? "1.5px solid #fca5a5" : "none", borderRadius:10 }}>
+        <Field label="Titre de la mission" name="title" value={form.title} onChange={handleChange} />
+      </div>
+
+      {/* Agent — ICI */}
+      <div style={{ border: errors.agent ? "1.5px solid #fca5a5" : "none", borderRadius:10 }}>
+        <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+          <label style={{ fontFamily:"'Roboto',sans-serif", fontSize:10, fontWeight:600, color:"#9ca3af", letterSpacing:"0.12em", textTransform:"uppercase" }}>
+            Agent assigné
+          </label>
+          <select
+            name="agent"
+            value={form.agent}
+            onChange={handleChange}
+            style={{ padding:"10px 14px", borderRadius:10, background:"#f9fafb", border:"1.5px solid #e5e7eb", color:"#111827", fontFamily:"'Roboto',sans-serif", fontSize:14, outline:"none", width:"100%" }}
+          >
+            <option value="">— Sélectionner un agent —</option>
+            {agents.map(a => (
+              <option key={a.id} value={a.id}>
+                {a.firstName} {a.lastName}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+    </div>
+    <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
+      <button onClick={() => { setModalOpen(false); setEditingMission(null); }}
+    style={{ padding:"9px 18px", borderRadius:9, border:"1.5px solid #e5e7eb", background:"#fff", color:"#6b7280", fontFamily:"'Roboto',sans-serif", fontSize:13, fontWeight:500, cursor:"pointer" }}
+    onMouseEnter={e => e.currentTarget.style.background="#f9fafb"}
+    onMouseLeave={e => e.currentTarget.style.background="#fff"}
+  >
+    Annuler
+  </button>
+      <button onClick={handleSave}
+    style={{ padding:"9px 20px", borderRadius:9, background:"#22c55e", border:"none", color:"#fff", fontFamily:"'Roboto',sans-serif", fontSize:13, fontWeight:600, cursor:"pointer", boxShadow:"0 2px 8px rgba(34,197,94,0.25)", transition:"all 0.2s" }}
+    onMouseEnter={e => e.currentTarget.style.background="#16a34a"}
+    onMouseLeave={e => e.currentTarget.style.background="#22c55e"}
+  >
+    {editingMission ? "✎  Enregistrer" : "+  Créer la mission"}
+  </button>
+    </div>
+  </Modal>
+)}
 
       {/* Modal delete */}
       {modalDelete.open && (
