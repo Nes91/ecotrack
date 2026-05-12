@@ -727,7 +727,6 @@ function buildTimeline(status) {
 };
 
 const handleSave = async () => {
-  console.log("🔥 handleSave appelé");
   const newErrors = {};
   if (!form.title) newErrors.title = true;
   if (!form.agent) newErrors.agent = true;
@@ -747,22 +746,19 @@ const handleSave = async () => {
       showToast("Mission modifiée !");
 
     } else {
-      const selectedAgent = agents.find(
-        a => `${a.firstName} ${a.lastName}` === form.agent
-      );
-
-      if (!selectedAgent) {
+      // Création — form.agent contient directement l'ID
+      const agentId = parseInt(form.agent);
+      if (!agentId) {
         showToast("Veuillez sélectionner un agent valide ❌");
         return;
       }
 
-      // On appelle la route /missions que nous avons créée dans le backend
       await API.post("/missions", {
         title: form.title,
-        agentId: Number(selectedAgent.id) // On envoie l'ID numérique
+        agentId: agentId,
       });
 
-      // On rafraîchit la liste des missions
+      // Rafraîchir la liste
       const updated = await API.get("/routes");
       const formatted = updated.data.map(route => ({
         id:              route.id,
@@ -774,9 +770,9 @@ const handleSave = async () => {
         timeline:        buildTimeline(route.status),
         stops:           route.stops || [],
       }));
-      
+
       setMissions(formatted);
-      showToast(`Mission créée avec succès ! 🚀`);
+      showToast("Mission créée avec succès ! 🚀");
     }
 
   } catch (err) {
