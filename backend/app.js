@@ -8,7 +8,14 @@ import jwt from 'jsonwebtoken';
 
 const app = express();
 const prisma = new PrismaClient();
-const PORT = process.env.PORT || 8000;
+// Ping Supabase toutes les 4 minutes pour éviter la mise en pause
+setInterval(async () => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+  } catch (e) {
+    console.log('Ping DB failed:', e.message);
+  }
+}, 4 * 60 * 1000);
 const SECRET_KEY = process.env.SECRET_KEY || 'secret';
 
 // Configuration multer
@@ -1478,7 +1485,9 @@ app.put('/missions/:id/terminer', authMiddleware, authorize(['AGENT']), async (r
   }
 });
 
-app.listen(PORT, () => {
+const PORT = process.env.PORT || 8000;
+
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
 });
 
