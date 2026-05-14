@@ -28,7 +28,11 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
-app.use('/uploads', express.static('uploads')); // Servir les fichiers uploadés
+app.use('/uploads', express.static('uploads'));
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', service: 'ecotrack-api' });
+});
+ // Servir les fichiers uploadés
 
 // ===== Rôles autorisés =====
 const VALID_ROLES = ['ADMIN', 'MANAGER', 'AGENT', 'CITIZEN'];
