@@ -663,6 +663,12 @@ const [loading, setLoading] = useState(true);
   const [in_, setIn] = useState(false);
   const [myTour, setMyTour] = useState(null);
 const [loadingTour, setLoadingTour] = useState(false);
+const [optimizeModalOpen, setOptimizeModalOpen] = useState(false);
+const [optimizeForm, setOptimizeForm] = useState({ 
+  agent: "", 
+  fillThreshold: 70,
+  name: ""
+});
 
 // Charge la tournée de l'agent au démarrage
 useEffect(() => {
@@ -829,6 +835,40 @@ const handleDelete = async () => {
   setModalDelete({ open: false, missionId: null });
 };
 
+const handleOptimize = async () => {
+  if (!optimizeForm.agent) {
+    showToast("Veuillez sélectionner un agent ❌");
+    return;
+  }
+  try {
+    await API.post("/routes/optimize", {
+      depot: { lat: 48.8566, lng: 2.3522 },
+      fillThreshold: optimizeForm.fillThreshold,
+      agentId: parseInt(optimizeForm.agent),
+      name: optimizeForm.name || `Tournée ${new Date().toLocaleDateString('fr-FR')}`,
+    });
+
+    const updated = await API.get("/routes");
+    const formatted = updated.data.map(route => ({
+      id:              route.id,
+      title:           route.name,
+      agent:           route.agent ? `${route.agent.firstName} ${route.agent.lastName}` : "—",
+      totalDistanceKm: route.totalDistanceKm,
+      improvement:     route.improvement,
+      containersCount: route.containersCount,
+      timeline:        buildTimeline(route.status),
+      stops:           route.stops || [],
+    }));
+    setMissions(formatted);
+    setOptimizeModalOpen(false);
+    setOptimizeForm({ agent: "", fillThreshold: 70, name: "" });
+    showToast("Tournée optimisée avec succès ! 🗺️");
+  } catch (err) {
+    showToast("Erreur lors de l'optimisation ❌");
+    console.error(err);
+  }
+};
+
 const advanceStep = async (missionId) => {
   try {
     // Met à jour le statut côté API
@@ -929,6 +969,14 @@ const filtered = missions.filter(m => {
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                 Nouvelle mission
               </button>
+              <button
+  onClick={() => { setOptimizeModalOpen(true); }}
+  style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, background:"#7c3aed", border:"none", color:"#fff", fontFamily:"'Roboto',sans-serif", fontSize:13, fontWeight:600, cursor:"pointer", boxShadow:"0 2px 8px rgba(124,58,237,0.25)", transition:"all 0.2s" }}
+  onMouseEnter={e => e.currentTarget.style.background="#6d28d9"}
+  onMouseLeave={e => e.currentTarget.style.background="#7c3aed"}
+>
+  🗺️ Optimiser une tournée
+</button>
             </div>
           </div>
           
@@ -1036,6 +1084,73 @@ const filtered = missions.filter(m => {
           </div>
         </Modal>
       )}
+
+      {optimizeModalOpen && (
+  <Modal title="🗺️ Optimiser une tournée" onClose={() => setOptimizeModalOpen(false)}>
+    <div style={{ display:"flex", flexDirection:"column", gap:14, marginBottom:22 }}>
+      
+      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+        <label style={{ fontFamily:"'Roboto',sans-serif", fontSize:10, fontWeight:600, color:"#9ca3af", letterSpacing:"0.12em", textTransform:"uppercase" }}>
+          Nom de la tournée
+        </label>
+        <input
+          value={optimizeForm.name}
+          onChange={e => setOptimizeForm(f => ({ ...f, name: e.target.value }))}
+          placeholder={`Tournée ${new Date().toLocaleDateString('fr-FR')}`}
+          style={{ padding:"10px 14px", borderRadius:10, background:"#f9fafb", border:"1.5px solid #e5e7eb", color:"#111827", fontFamily:"'Roboto',sans-serif", fontSize:14, outline:"none", width:"100%" }}
+        />
+      </div>
+
+      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+        <label style={{ fontFamily:"'Roboto',sans-serif", fontSize:10, fontWeight:600, color:"#9ca3af", letterSpacing:"0.12em", textTransform:"uppercase" }}>
+          Agent assigné
+        </label>
+        <select
+          value={optimizeForm.agent}
+          onChange={e => setOptimizeForm(f => ({ ...f, agent: e.target.value }))}
+          style={{ padding:"10px 14px", borderRadius:10, background:"#f9fafb", border:"1.5px solid #e5e7eb", color:"#111827", fontFamily:"'Roboto',sans-serif", fontSize:14, outline:"none", width:"100%" }}
+        >
+          <option value="">— Sélectionner un agent —</option>
+          {agents.map(a => (
+            <option key={a.id} value={a.id}>{a.firstName} {a.lastName}</option>
+          ))}
+        </select>
+      </div>
+
+      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+        <label style={{ fontFamily:"'Roboto',sans-serif", fontSize:10, fontWeight:600, color:"#9ca3af", letterSpacing:"0.12em", textTransform:"uppercase" }}>
+          Seuil de remplissage minimum : {optimizeForm.fillThreshold}%
+        </label>
+        <input
+          type="range" min="50" max="95" step="5"
+          value={optimizeForm.fillThreshold}
+          onChange={e => setOptimizeForm(f => ({ ...f, fillThreshold: parseInt(e.target.value) }))}
+          style={{ width:"100%", accentColor:"#7c3aed" }}
+        />
+        <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"#9ca3af" }}>
+          <span>50%</span><span>95%</span>
+        </div>
+      </div>
+
+      <div style={{ padding:"12px 14px", borderRadius:10, background:"#f5f3ff", border:"1px solid #ddd6fe", fontSize:13, color:"#6d28d9" }}>
+        🧠 L'algorithme TSP optimisera automatiquement l'itinéraire pour tous les conteneurs dépassant {optimizeForm.fillThreshold}% de remplissage.
+      </div>
+    </div>
+
+    <div style={{ display:"flex", justifyContent:"flex-end", gap:8 }}>
+      <button onClick={() => setOptimizeModalOpen(false)}
+        style={{ padding:"9px 18px", borderRadius:9, border:"1.5px solid #e5e7eb", background:"#fff", color:"#6b7280", fontFamily:"'Roboto',sans-serif", fontSize:13, fontWeight:500, cursor:"pointer" }}
+      >
+        Annuler
+      </button>
+      <button onClick={handleOptimize}
+        style={{ padding:"9px 20px", borderRadius:9, background:"#7c3aed", border:"none", color:"#fff", fontFamily:"'Roboto',sans-serif", fontSize:13, fontWeight:600, cursor:"pointer", boxShadow:"0 2px 8px rgba(124,58,237,0.25)" }}
+      >
+        🚀 Lancer l'optimisation
+      </button>
+    </div>
+  </Modal>
+)}
 
       {toast && <Toast message={toast} />}
     </>
