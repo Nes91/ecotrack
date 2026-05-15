@@ -232,7 +232,17 @@ app.post('/agents', authMiddleware, authorize(['ADMIN']), async (req, res) => {
         address: address || null,
         lat: latitude ? parseFloat(latitude) : null,
         lng: longitude ? parseFloat(longitude) : null,
+        gamifications: {
+          create: {
+            points: 0,
+            level: 1,
+            badges: []
+          }
+        }
       },
+      include: {
+        gamifications: true
+      }
     });
 
     const { password: _, ...safe } = newUser;
@@ -355,23 +365,6 @@ app.post('/signalements/public', upload.single('photo'), async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Erreur création signalement public' });
-  }
-});
-
-// Admins et Managers : voir tous les signalements
-app.get('/signalements', authMiddleware, authorize(['ADMIN', 'MANAGER', 'CITIZEN']), async (req, res) => {
-  try {
-    const signalements = await prisma.report.findMany({
-      include: {
-        user: { select: { id: true, firstName: true, lastName: true } },
-        container: { select: { id: true, type: true, zone: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json(signalements);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Erreur récupération signalements' });
   }
 });
 
@@ -996,26 +989,25 @@ app.get('/missions/mes-missions', authMiddleware, async (req, res) => {
 app.post('/missions', authMiddleware, async (req, res) => {
   const { title, agentId } = req.body;
 
-  try {
-    const newRoute = await prisma.route.create({
-      data: {
-        name: title, // Utilise 'name' car c'est le champ dans ton schéma Prisma
-        agentId: parseInt(agentId),
-        status: 'PENDING',
-      },
-      // On inclut l'agent pour que le frontend reçoive immédiatement son nom
-      include: {
-        agent: {
-          select: { id: true, firstName: true, lastName: true }
-        }
-      }
-    });
-
-    res.status(201).json(newRoute);
-  } catch (err) {
-    console.error("Erreur création mission:", err);
-    res.status(400).json({ error: "Impossible de créer la mission." });
-  }
+try {
+  const mission = await prisma.mission.create({  // ← mission.create
+    data: {
+      title,
+      description: req.body.description || null,
+      agentId: parseInt(agentId),
+      adminId: req.userId,                       // ← admin connecté
+      status: 'PENDING',
+    },
+    include: {
+      agent: { select: { id: true, firstName: true, lastName: true } },
+      admin: { select: { id: true, firstName: true, lastName: true } },
+    }
+  });
+  res.status(201).json(mission);
+} catch (err) {
+  console.error("Erreur création mission:", err);
+  res.status(400).json({ error: "Impossible de créer la mission." });
+}
 });
 
 app.put('/missions/:id', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
@@ -1123,7 +1115,7 @@ app.post('/routes/optimize', authMiddleware, authorize(['ADMIN', 'MANAGER']), as
         containersCount: result.containersCount,
         status: 'ASSIGNED',
         stops: {
-          create: result.orderedContainers.map((c, i) => ({
+          create: result.route.map((c, i) => ({
             order: i + 1,
             distanceFromPrevious: 0,
             containerId: c.id,
