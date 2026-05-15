@@ -60,7 +60,7 @@ describe('Login', () => {
     fireEvent.click(screen.getByRole('button', { name: /se connecter/i }));
 
     await waitFor(() => {
-      expect(API.post).toHaveBeenCalledWith('/login', {
+      expect(API.post).toHaveBeenCalledWith('/auth/login', {
         email: 'jean@ecotrack.fr',
         password: 'monmotdepasse',
       });
