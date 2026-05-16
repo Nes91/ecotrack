@@ -1,4 +1,3 @@
-// backend/server.js
 import app from './app.js';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
@@ -7,7 +6,11 @@ const PORT = process.env.PORT || 8000;
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
-  cors: { origin: 'http://localhost:3000', credentials: true }
+  cors: {
+    origin: ['http://localhost:3000', 'https://ecotrack-five.vercel.app'],
+    methods: ['GET', 'POST'],
+    credentials: true
+  }
 });
 
 const connectedUsers = {};
@@ -29,6 +32,8 @@ io.on('connection', (socket) => {
   });
 });
 
-httpServer.listen(PORT, () =>
+httpServer.listen(PORT, '0.0.0.0', () =>
   console.log(`🚀 Serveur ECOTRACK lancé sur http://localhost:${PORT}`)
 );
+
+export { io, connectedUsers };
