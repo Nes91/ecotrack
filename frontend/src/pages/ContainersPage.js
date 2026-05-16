@@ -466,14 +466,23 @@ const selectAddress = (result) => {
   const lat = parseFloat(result.lat);
   const lon = parseFloat(result.lon);
 
-  // Met à jour les coordonnées
   setMapClickCoords({ latitude: lat, longitude: lon });
 
-  // Met à jour automatiquement le champ zone avec le nom de la ville
-  const parts = result.display_name.split(',');
-  setForm(prev => ({ ...prev, zone: parts[0].trim() }));
+  // ✅ Extrait intelligemment : ville ou arrondissement
+  const parts = result.display_name.split(',').map(p => p.trim());
+  
+  // Cherche la partie la plus pertinente (ville, commune, quartier)
+  // Typiquement : parts[1] = quartier/commune pour une adresse française
+  const zone = parts.find(p => 
+    p.length > 2 && 
+    p.length < 30 && 
+    !p.match(/^\d/) &&           // pas un numéro
+    !p.includes('France') &&
+    !p.includes('Île-de-France') &&
+    !p.includes('Région')
+  ) || parts[0];
 
-  // Vide les résultats
+  setForm(prev => ({ ...prev, zone }));
   setAddressResults([]);
   setAddressSearch("");
 };
@@ -725,7 +734,50 @@ const handleEdit = (c) => {
     </div>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 20 }}>
       <Field label="Type" name="type" value={form.type} onChange={handleChange} />
-      <Field label="Zone" name="zone" value={form.zone} onChange={handleChange} />
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+  <label style={{ fontFamily: "'Roboto',sans-serif", fontSize: 10, fontWeight: 600, color: "#9ca3af", letterSpacing: "0.12em", textTransform: "uppercase" }}>
+    Zone
+  </label>
+  <div style={{ position: "relative" }}>
+    <input
+      name="zone"
+      value={form.zone}
+      onChange={handleChange}
+      placeholder="Ex: Quartier Nord, Zone Est..."
+      title={form.zone} // ✅ Affiche le texte complet au survol
+      style={{
+        width: "100%", padding: "10px 36px 10px 14px",
+        borderRadius: 10, background: "#f9fafb",
+        border: "1.5px solid #e5e7eb", color: "#111827",
+        fontFamily: "'Roboto',sans-serif", fontSize: 14,
+        outline: "none",
+        // ✅ Tronque le texte trop long avec "..."
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap"
+      }}
+    />
+    {form.zone && (
+      <button
+        onClick={() => setForm(prev => ({ ...prev, zone: "" }))}
+        style={{
+          position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)",
+          background: "none", border: "none", cursor: "pointer",
+          color: "#9ca3af", fontSize: 14, lineHeight: 1,
+          padding: "2px 4px", borderRadius: 4
+        }}
+        onMouseEnter={e => e.currentTarget.style.color = "#374151"}
+        onMouseLeave={e => e.currentTarget.style.color = "#9ca3af"}
+        title="Effacer la zone"
+      >
+        ✕
+      </button>
+    )}
+  </div>
+  {form.zone && (
+    <p style={{ fontFamily: "'Roboto',sans-serif", fontSize: 10, color: "#6b7280", marginTop: 2 }}>
+      📍 {form.zone}
+    </p>
+  )}
+</div>
       <Field label="Capacité (L)" name="capacity" value={form.capacity} onChange={handleChange} type="number" />
       <Field label="Remplissage (%)" name="fillLevel" value={form.fillLevel} onChange={handleChange} type="number" />
     </div>

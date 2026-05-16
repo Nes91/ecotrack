@@ -379,30 +379,55 @@ function AgentRouteMap({ stops, depot }) {
             attribution="© OpenStreetMap"
           />
 
-          {/* ✅ Vrai itinéraire sur les routes (OSRM) */}
-          {routeCoords.length > 0 && (
-            <Polyline
-              positions={routeCoords}
-              pathOptions={{
-                color: "#22c55e",
-                weight: 5,
-                opacity: 0.85,
-              }}
-            />
-          )}
+          {/* Contour blanc — EN PREMIER (en dessous) */}
+  {routeCoords.length > 0 && (
+    <Polyline
+      positions={routeCoords}
+      pathOptions={{ color: "#ffffff", weight: 11, opacity: 0.4 }}
+    />
+  )}
 
-          {/* Ligne droite en fallback si OSRM pas encore chargé */}
-          {routeCoords.length === 0 && !isLoading && (
-            <Polyline
-              positions={[
-                [depot.lat, depot.lng],
-                ...validStops.map(s => [Number(s.container.latitude), Number(s.container.longitude)]),
-                [depot.lat, depot.lng],
-              ]}
-              pathOptions={{ color: "#22c55e", weight: 3, opacity: 0.5, dashArray: "8, 6" }}
-            />
-          )}
+  {/* Itinéraire bleu principal — AU-DESSUS du contour */}
+  {routeCoords.length > 0 && (
+    <Polyline
+      positions={routeCoords}
+      pathOptions={{ color: "#3b82f6", weight: 7, opacity: 0.9, lineCap: "round", lineJoin: "round" }}
+    />
+  )}
 
+  {/* ✅ Flèches de direction — ICI, après les polylines */}
+  {routeCoords.length > 2 && (() => {
+    const arrowPoints = routeCoords.filter((_, i) => i > 0 && i % 5 === 0 && i < routeCoords.length - 1);
+    return arrowPoints.map((pos, i) => {
+      const prevIndex = routeCoords.indexOf(pos) - 1;
+      const prev = routeCoords[prevIndex] || pos;
+      const angle = Math.atan2(pos[1] - prev[1], pos[0] - prev[0]) * 180 / Math.PI;
+      return (
+        <Marker
+          key={`arrow-${i}`}
+          position={pos}
+          icon={L.divIcon({
+            className: "",
+            html: `<div style="transform:rotate(${angle}deg);color:#3b82f6;font-size:16px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.3));">➤</div>`,
+            iconSize: [16, 16],
+            iconAnchor: [8, 8],
+          })}
+        />
+      );
+    });
+  })()}
+
+  {/* Ligne droite en fallback si OSRM pas encore chargé */}
+  {routeCoords.length === 0 && !isLoading && (
+    <Polyline
+      positions={[
+        [depot.lat, depot.lng],
+        ...validStops.map(s => [Number(s.container.latitude), Number(s.container.longitude)]),
+        [depot.lat, depot.lng],
+      ]}
+      pathOptions={{ color: "#22c55e", weight: 3, opacity: 0.5, dashArray: "8, 6" }}
+    />
+  )}
           {/* Marqueur dépôt */}
           <Marker
             position={[depot.lat, depot.lng]}
@@ -780,34 +805,34 @@ const handleSave = async () => {
       showToast("Mission modifiée !");
 
     } else {
-      // Création — form.agent contient directement l'ID
-      const agentId = parseInt(form.agent);
-      if (!agentId) {
-        showToast("Veuillez sélectionner un agent valide ❌");
-        return;
-      }
+  const agentId = parseInt(form.agent);
+  if (!agentId) {
+    showToast("Veuillez sélectionner un agent valide ❌");
+    return;
+  }
 
-      await API.post("/missions", {
-        title: form.title,
-        agentId: agentId,
-      });
+  // ✅ POST /tournees directement (pas /missions)
+  await API.post("/tournees", {
+    name: form.title,
+    agentId: agentId,
+  });
 
-      // Rafraîchir la liste
-      const updated = await API.get("/routes");
-      const formatted = updated.data.map(route => ({
-        id:              route.id,
-        title:           route.name,
-        agent:           route.agent ? `${route.agent.firstName} ${route.agent.lastName}` : "—",
-        totalDistanceKm: route.totalDistanceKm,
-        improvement:     route.improvement,
-        containersCount: route.containersCount,
-        timeline:        buildTimeline(route.status),
-        stops:           route.stops || [],
-      }));
+  // Rafraîchir la liste
+  const updated = await API.get("/routes");
+  const formatted = updated.data.map(route => ({
+    id:              route.id,
+    title:           route.name,
+    agent:           route.agent ? `${route.agent.firstName} ${route.agent.lastName}` : "—",
+    totalDistanceKm: route.totalDistanceKm,
+    improvement:     route.improvement,
+    containersCount: route.containersCount,
+    timeline:        buildTimeline(route.status),
+    stops:           route.stops || [],
+  }));
 
-      setMissions(formatted);
-      showToast("Mission créée avec succès ! 🚀");
-    }
+  setMissions(formatted);
+  showToast("Tournée créée avec succès ! 🚀");
+}
 
   } catch (err) {
     showToast("Erreur lors de la sauvegarde ❌");
