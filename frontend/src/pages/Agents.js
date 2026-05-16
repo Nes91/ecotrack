@@ -282,18 +282,33 @@ export default function Agents() {
   );
   const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault(); setSubmitting(true);
-    try {
-      const payload = editingId
-  ? { firstName: form.firstName, lastName: form.lastName, role: form.role }
-  : { firstName: form.firstName, lastName: form.lastName, role: form.role, email: form.email, password: form.password };
-      if (editingId) await API.put(`/agents/${editingId}`, payload);
-      else await API.post("/agents", payload);
-setForm({ firstName: agents.firstName, lastName: agents.lastName, role: agents.role, email: "", password: "" });
-    } catch (err) { console.error(err); }
-    finally { setSubmitting(false); }
-  };
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setSubmitting(true);
+  try {
+    const payload = editingId
+      ? { firstName: form.firstName, lastName: form.lastName, role: form.role }
+      : { firstName: form.firstName, lastName: form.lastName, role: form.role, email: form.email, password: form.password };
+
+    if (editingId) {
+      await API.put(`/agents/${editingId}`, payload);
+    } else {
+      await API.post("/agents", payload);
+    }
+
+    // ✅ Réinitialiser correctement le formulaire
+    setForm({ firstName: "", lastName: "", role: "AGENT", email: "", password: "" });
+    setEditingId(null);
+
+    // ✅ Rafraîchir la liste
+    fetchAgents();
+
+  } catch (err) {
+    console.error(err);
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   const handleDelete = async (id) => {
     if (!window.confirm("Supprimer cet agent ?")) return;
