@@ -297,13 +297,21 @@ app.put('/agents/:id', authMiddleware, authorize(['ADMIN']), async (req, res) =>
 });
 
 app.delete('/agents/:id', authMiddleware, authorize(['ADMIN']), async (req, res) => {
-  const { id } = req.params;
+  const id = parseInt(req.params.id);
   try {
-    await prisma.user.delete({ where: { id: parseInt(id) } });
-    res.json({ message: 'Utilisateur supprimé' });
+    // Supprimer les données liées avant de supprimer l'utilisateur
+    await prisma.gamification.deleteMany({ where: { userId: id } });
+    await prisma.mission.deleteMany({ where: { agentId: id } });
+    await prisma.route.deleteMany({ where: { agentId: id } });
+    await prisma.report.deleteMany({ where: { userId: id } });
+    
+    // Supprimer l'utilisateur
+    await prisma.user.delete({ where: { id } });
+    res.json({ message: 'Agent supprimé avec succès.' });
   } catch (err) {
     console.error(err);
-    res.status(400).json({ error: 'Erreur lors de la suppression' });
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Agent introuvable.' });
+    res.status(500).json({ error: 'Erreur suppression agent.', details: err.message });
   }
 });
 
