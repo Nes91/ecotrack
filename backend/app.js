@@ -65,47 +65,53 @@ const authorize = (roles) => (req, res, next) => {
 // AUTH
 // ─────────────────────────────────────────────────────────────────────────────
 app.post('/auth/register', async (req, res) => {
-const { name, firstName, lastName, email, password, role } = req.body;
+  const { name, firstName, lastName, email, password, role } = req.body;
 
   if (!email || !password)
-  return res.status(400).json({ message: 'Tous les champs sont obligatoires' });
+    return res.status(400).json({ message: 'Tous les champs sont obligatoires' });
+
+  // ✅ Accepte firstName/lastName séparés OU name combiné
+  const first = firstName || (name ? name.split(' ')[0] : '');
+  const last  = lastName  || (name ? name.split(' ').slice(1).join(' ') : '');
+
+  if (!first)
+    return res.status(400).json({ message: 'Le prénom est obligatoire' });
+
   const hashedPassword = await bcrypt.hash(password, 10);
 
   try {
     const user = await prisma.user.create({
-      data: { 
-        firstName: name.split(' ')[0] || name,
-        lastName: name.split(' ')[1] || '',
-        email, 
-        password: hashedPassword, 
-        role: role || 'CITIZEN',
-        gamifications: {  // ← Créer la gamification en même temps
-          create: {
-            points: 0,
-            level: 1,
-            badges: []
-          }
+      data: {
+        firstName: first,
+        lastName:  last,
+        email,
+        password:  hashedPassword,
+        role:      role || 'CITIZEN',
+        gamifications: {
+          create: { points: 0, level: 1, badges: [] }
         }
       },
-      include: {
-        gamifications: true
-      }
+      include: { gamifications: true }
     });
 
-    const token = jwt.sign({ userId: user.id, role: user.role }, SECRET_KEY, { expiresIn: '7d' });
+    const token = jwt.sign(
+      { userId: user.id, role: user.role },
+      SECRET_KEY,
+      { expiresIn: '7d' }
+    );
 
     res.status(201).json({
-      id: user.id,
-      name: `${user.firstName} ${user.lastName}`,
+      id:    user.id,
+      name:  `${user.firstName} ${user.lastName}`,
       email: user.email,
-      role: user.role,
+      role:  user.role,
       token,
     });
   } catch (err) {
     console.error(err);
     res.status(400).json({ message: 'Email déjà utilisé ou erreur de création' });
   }
-})
+});
 
 // Après votre route /auth/register existante (ligne ~48)
 
@@ -1487,10 +1493,6 @@ app.put('/missions/:id/terminer', authMiddleware, authorize(['AGENT']), async (r
 });
 
 const PORT = process.env.PORT || 8000;
-
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT}`);
-});
 
 app.get("/", (req, res) => {
   res.send("Ecotrack API is running 🚀");
