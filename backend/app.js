@@ -65,6 +65,7 @@ const authorize = (roles) => (req, res, next) => {
 // AUTH
 // ─────────────────────────────────────────────────────────────────────────────
 app.post('/auth/register', async (req, res) => {
+  console.log('📝 REGISTER body reçu:', JSON.stringify(req.body));
   const { name, firstName, lastName, email, password, role } = req.body;
 
   if (!email || !password)
