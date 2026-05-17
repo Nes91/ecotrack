@@ -1117,12 +1117,20 @@ app.post('/routes/optimize', authMiddleware, authorize(['ADMIN', 'MANAGER']), as
     return res.status(400).json({ error: 'L\'agent est obligatoire.' });
   try {
     const { optimizeRoute } = await import('./services/routeOptimizer.js');
-    const containers = await prisma.container.findMany({
+    const containersRaw = await prisma.container.findMany({
       where: { fillLevel: { gte: parseFloat(fillThreshold) } },
       orderBy: { fillLevel: 'desc' },
     });
-    if (containers.length === 0)
+
+    if (containersRaw.length === 0)
       return res.json({ message: `Aucun conteneur au-dessus de ${fillThreshold}%`, route: null, containersCount: 0 });
+
+    // ✅ Mapper latitude/longitude → lat/lng pour l'algorithme
+    const containers = containersRaw.map(c => ({
+      ...c,
+      lat: parseFloat(c.latitude),
+      lng: parseFloat(c.longitude),
+    }));
 
     const result = optimizeRoute(depot, containers);
 
@@ -1130,14 +1138,14 @@ app.post('/routes/optimize', authMiddleware, authorize(['ADMIN', 'MANAGER']), as
       data: {
         agentId: parseInt(agentId),
         name: name || `Tournée ${new Date().toLocaleDateString('fr-FR')}`,
-        totalDistanceKm: result.totalDistanceKm,
+        totalDistanceKm: parseFloat(result.totalDistanceKm),
         fillThreshold: parseInt(fillThreshold),
         containersCount: result.containersCount,
         status: 'ASSIGNED',
         stops: {
           create: result.route.map((c, i) => ({
             order: i + 1,
-            distanceFromPrevious: 0,
+            distanceFromPrevious: parseFloat(c.distanceFromPrevious || 0),
             containerId: c.id,
           })),
         },
