@@ -118,20 +118,26 @@ function MissionCard({ mission, index, onEdit, onDelete, onAdvance }) {
           <div style={{ fontFamily:"'Roboto', sans-serif", fontSize:18, fontWeight:700, color:"#111827", lineHeight:1.2, marginBottom:6 }}>
             {mission.title}
           </div>
-          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
             <Avatar name={mission.agent} size={22} />
             <span style={{ fontFamily:"'Roboto',sans-serif", fontSize:12, color:"#6b7280" }}>{mission.agent || "—"}</span>
           </div>
+          {/* ✅ Pills déplacées ici, sous l'agent */}
+          {(mission.totalDistanceKm || mission.containersCount) && (
+            <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+              {mission.totalDistanceKm && (
+                <StatPill icon="📏" value={`${mission.totalDistanceKm} km`} />
+              )}
+              {mission.improvement && mission.improvement !== "-null" && (
+                <StatPill icon="✅" value={mission.improvement} color="#15803d" />
+              )}
+              {mission.containersCount && (
+                <StatPill icon="🗑️" value={`${mission.containersCount} bacs`} />
+              )}
+            </div>
+          )}
         </div>
         <StatusBadge timeline={mission.timeline} />
-        {/* Après le StatusBadge existant, dans MissionCard */}
-{mission.totalDistanceKm && (
-  <div style={{ display:"flex", gap:8, marginTop:4 }}>
-    <StatPill icon="📏" value={`${mission.totalDistanceKm} km`} />
-    <StatPill icon="✅" value={`-${mission.improvement}`} color="#15803d" />
-    <StatPill icon="🗑️" value={`${mission.containersCount} bacs`} />
-  </div>
-)}
       </div>
 
       <div style={{ height:1, background:"#f3f4f6" }} />
