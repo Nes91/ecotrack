@@ -59,7 +59,6 @@ const CARDS_BY_ROLE = {
     { path: "/containers",    icon: "🗑️",  label: "Conteneurs",     color: "#f59e0b",  bg: "#fffbeb" },
     { path: "/signalements",  icon: "📍", label: "Signalements",    color: "#ef4444",  bg: "#fef2f2" },
     { path: "/agents",        icon: "👥", label: "Agents",         color: "#8b5cf6",  bg: "#faf5ff" },
-    { path: "/gamification",  icon: "🏆", label: "Gamification",   color: "#ca8a04",  bg: "#fffbeb" },
   ],
   MANAGER: [
     { path: "/dashboard",     icon: "📊", label: "Tableau de bord", color: "#22c55e",  bg: "#f0fdf4" },
@@ -238,13 +237,15 @@ return (
           <Route
             path="/containers"
             element={
-              <ProtectedRoute user={user} allowedRoles={["ADMIN", "AGENT", "MANAGER"]}>
+              <ProtectedRoute user={user} allowedRoles={["ADMIN", "MANAGER"]}>
                 <Containers />
               </ProtectedRoute>
             }
           />
 
-          <Route path="/gamification" element={<Gamification />} />
+          <Route path="/gamification" element={<ProtectedRoute user={user} allowedRoles={["CITIZEN"]}>
+                <Gamification />
+              </ProtectedRoute>} />
 
           <Route
             path="/agents"
