@@ -15,14 +15,12 @@ export const menuByRole = {
     { label: "Tournées",      path: "/tournees",      icon: "🛣️" },
     { label: "Containers",    path: "/containers",    icon: "🗑️" },
     { label: "Signalements",  path: "/signalements",  icon: "⚠️" },
-    { label: "Gamification",  path: "/gamification",  icon: "🏆" },
     { label: "Profil",        path: "/profile",       icon: "👤" },
   ],
   AGENT: [
     { label: "Dashboard",     path: "/dashboard",     icon: "📊" },
     { label: "Mes tournées",  path: "/tournees",      icon: "🛣️" },
     { label: "Signalements",  path: "/signalements",  icon: "⚠️" },
-    { label: "Gamification",  path: "/gamification",  icon: "🏆" },
     { label: "Profil",        path: "/profile",       icon: "👤" },
   ],
   CITIZEN: [
