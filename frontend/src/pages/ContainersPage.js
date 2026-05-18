@@ -510,7 +510,7 @@ const selectAddress = (result) => {
       }
       setForm({ type: "", capacity: "", fillLevel: 0, zone: "" });
       setEditingContainer(null); setModalOpen(false); setMapClickCoords(null);
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error(err); showToast("Erreur lors de l'enregistrement"); }
   };
 
 const handleEdit = (c) => {
