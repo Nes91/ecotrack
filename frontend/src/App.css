@@ -2530,3 +2530,11 @@ button:hover {
   height: 100vh !important;
   z-index: 99999 !important;
 }
+
+@keyframes dash {
+  to { stroke-dashoffset: -20; }
+}
+.leaflet-interactive {
+  stroke-dasharray: 12, 6;
+  animation: dash 0.8s linear infinite;
+}

@@ -15,6 +15,7 @@ import Auth from "./components/auth";
 import SignalementAdmin from "./pages/SignalementsAdmin";
 import { useSocket } from "./hooks/useSocket";
 import MessageToast from "./components/MessageToast";
+import ManagerResolvedToast from "./components/ManagerResolvedToast";
 
 // ─── Role config
 const ROLE_META = {
@@ -81,6 +82,7 @@ const CARDS_BY_ROLE = {
 
 // ─── App root
 export default function App() {
+  const [managerToast, setManagerToast] = useState(null);
   const [socketToast, setSocketToast] = useState(null);
   const [user, setUser] = useState(() => {
     const storedUser = localStorage.getItem("user");
@@ -154,44 +156,50 @@ useEffect(() => {
   };
 
 useSocket(user?.id, user?.role, (data) => {
-  if (!data || user.role !== "CITIZEN") return;
-
+  if (!data) return;
+ 
+  // ── Toast MANAGER : signalement résolu par un agent ──────────────────────
+  if (data.eventType === "signalement_resolu_manager" && user.role === "MANAGER") {
+    setManagerToast(data);
+    return;
+  }
+ 
+  // ── Toast CITOYEN : mise à jour de statut ───────────────────────────────
+  if (user.role !== "CITIZEN") return;
+ 
   let toastConfig = {
     title: `Signalement #${data.signalementId}`,
     type: "info",
-    message: ""
+    message: "",
   };
-
+ 
   switch (data.status) {
     case "PENDING":
       toastConfig.type = "info";
       toastConfig.message = "Votre signalement a bien été reçu.";
       break;
-
     case "IN_PROGRESS":
       toastConfig.type = "warning";
       toastConfig.message = "Votre signalement est en cours de traitement.";
       break;
-
     case "RESOLVED":
       toastConfig.type = "success";
       toastConfig.message = "Votre signalement a été traité avec succès.";
       break;
-
     case "REJECTED":
       toastConfig.type = "error";
       toastConfig.message = "Votre signalement a été rejeté.";
       break;
-
     default:
       toastConfig.message = "Mise à jour de votre signalement.";
   }
-
+ 
   setSocketToast({
     ...toastConfig,
-    onClick: () => window.location.href = "/signalements"
+    onClick: () => (window.location.href = "/signalements"),
   });
 });
+ 
 
   const handleLogout = () => {
     localStorage.clear();
@@ -270,13 +278,18 @@ return (
       </div>
     </main>
 
-    {/* <-- MessageToast doit être en dehors de <Routes> */}
     {socketToast && (
-      <MessageToast
-        data={socketToast}
-        onClose={() => setSocketToast(null)}
-      />
-    )}
+  <MessageToast
+    data={socketToast}
+    onClose={() => setSocketToast(null)}
+  />
+)}
+{managerToast && (
+  <ManagerResolvedToast
+    data={managerToast}
+    onClose={() => setManagerToast(null)}
+  />
+)}
   </Router>
 );
 }

@@ -8,7 +8,6 @@ import { useOSRMRoute } from "../hooks/useOSRMRoute";
 const ROLE_THEME = {
   ADMIN:   { label: "Administrateur", accent: "#8b5cf6" },
   MANAGER: { label: "Manager",        accent: "#22c55e" },
-  AGENT:   { label: "Agent",          accent: "#06b6d4" },
 };
 
 // ── Timeline step colors ───────────────────────────────────────────────────
@@ -982,34 +981,43 @@ const filtered = missions.filter(m => {
             </p>
           </div>
 
-          {/* Toolbar */}
-          <div style={{ background:"#fff", borderRadius:14, border:"1.5px solid #e5e7eb", boxShadow:"0 2px 12px rgba(0,0,0,0.05)", padding:"14px 18px", marginBottom:20, display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, flexWrap:"wrap" }}>
-            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-              {[["all","Toutes"],["active","En cours"],["pending","En attente"],["done","Terminées"]].map(([val,lab]) => (
-                <FilterBtn key={val} active={filter===val} onClick={() => setFilter(val)} label={lab} />
-              ))}
-            </div>
-            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-              <SearchBox value={search} onChange={setSearch} />
-              <button
-                onClick={() => { setEditingMission(null); setForm({ title:"", agent:"" }); setModalOpen(true); }}
-                style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, background:"#22c55e", border:"none", color:"#fff", fontFamily:"'Roboto',sans-serif", fontSize:13, fontWeight:600, cursor:"pointer", boxShadow:"0 2px 8px rgba(34,197,94,0.25)", transition:"all 0.2s", letterSpacing:"0.03em" }}
-                onMouseEnter={e => { e.currentTarget.style.background="#16a34a"; e.currentTarget.style.boxShadow="0 4px 16px rgba(34,197,94,0.35)"; }}
-                onMouseLeave={e => { e.currentTarget.style.background="#22c55e"; e.currentTarget.style.boxShadow="0 2px 8px rgba(34,197,94,0.25)"; }}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                Nouvelle mission
-              </button>
-              <button
-  onClick={() => { setOptimizeModalOpen(true); }}
-  style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, background:"#7c3aed", border:"none", color:"#fff", fontFamily:"'Roboto',sans-serif", fontSize:13, fontWeight:600, cursor:"pointer", boxShadow:"0 2px 8px rgba(124,58,237,0.25)", transition:"all 0.2s" }}
-  onMouseEnter={e => e.currentTarget.style.background="#6d28d9"}
-  onMouseLeave={e => e.currentTarget.style.background="#7c3aed"}
->
-  🗺️ Optimiser une tournée
-</button>
-            </div>
-          </div>
+{/* Toolbar */}
+<div style={{ background:"#fff", borderRadius:14, border:"1.5px solid #e5e7eb", boxShadow:"0 2px 12px rgba(0,0,0,0.05)", padding:"14px 18px", marginBottom:20, display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, flexWrap:"wrap" }}>
+  <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+    {[["all","Toutes"],["active","En cours"],["pending","En attente"],["done","Terminées"]].map(([val,lab]) => (
+      <FilterBtn key={val} active={filter===val} onClick={() => setFilter(val)} label={lab} />
+    ))}
+  </div>
+  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+    <SearchBox value={search} onChange={setSearch} />
+
+    {/* ✅ Boutons cachés pour les AGENT */}
+    {role !== 'AGENT' && (
+      <>
+        <button
+          onClick={() => { setEditingMission(null); setForm({ title:"", agent:"" }); setModalOpen(true); }}
+          style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, background:"#22c55e", border:"none", color:"#fff", fontFamily:"'Roboto',sans-serif", fontSize:13, fontWeight:600, cursor:"pointer", boxShadow:"0 2px 8px rgba(34,197,94,0.25)", transition:"all 0.2s", letterSpacing:"0.03em" }}
+          onMouseEnter={e => { e.currentTarget.style.background="#16a34a"; e.currentTarget.style.boxShadow="0 4px 16px rgba(34,197,94,0.35)"; }}
+          onMouseLeave={e => { e.currentTarget.style.background="#22c55e"; e.currentTarget.style.boxShadow="0 2px 8px rgba(34,197,94,0.25)"; }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Nouvelle mission
+        </button>
+
+        <button
+          onClick={() => setOptimizeModalOpen(true)}
+          style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 16px", borderRadius:9, background:"#7c3aed", border:"none", color:"#fff", fontFamily:"'Roboto',sans-serif", fontSize:13, fontWeight:600, cursor:"pointer", boxShadow:"0 2px 8px rgba(124,58,237,0.25)", transition:"all 0.2s" }}
+          onMouseEnter={e => e.currentTarget.style.background="#6d28d9"}
+          onMouseLeave={e => e.currentTarget.style.background="#7c3aed"}
+        >
+          🗺️ Optimiser une tournée
+        </button>
+      </>
+    )}
+  </div>
+</div>
           
           {/* Grid */}
           {role === 'AGENT' ? (

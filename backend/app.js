@@ -5,6 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import multer from 'multer';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import { io, connectedUsers } from './server.js';
 
 const app = express();
 const prisma = new PrismaClient();
@@ -593,41 +594,86 @@ async function checkAndAwardBadges(gamification, userId) {
 // ─────────────────────────────────────────────────────────────────────────────
 // SIGNALEMENTS - MODIFICATION
 // ─────────────────────────────────────────────────────────────────────────────
-app.put('/signalements/:id', authMiddleware, upload.single('photo'), async (req, res) => {
+pp.put('/signalements/:id', authMiddleware, upload.single('photo'), async (req, res) => {
   const { id } = req.params;
-  const { type, comment, lat, lng } = req.body;
-
+  const { type, comment, lat, lng, status } = req.body; // ← on ajoute "status"
+ 
   console.log("🔧 Modification signalement ID:", id);
-  console.log("🔧 Données reçues:", { type, comment, lat, lng });
-
+  console.log("🔧 Données reçues:", { type, comment, lat, lng, status });
+ 
   try {
     const existingReport = await prisma.report.findUnique({
-      where: { id: parseInt(id) }
+      where: { id: parseInt(id) },
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true } },
+      },
     });
-
+ 
     if (!existingReport) {
       return res.status(404).json({ error: 'Signalement non trouvé' });
     }
-
+ 
     if (req.userRole === 'CITIZEN' && existingReport.userId !== req.userId) {
       return res.status(403).json({ error: 'Non autorisé à modifier ce signalement' });
     }
-
+ 
     const updateData = {};
-    if (type) updateData.type = type;
+    if (type)              updateData.type    = type;
     if (comment !== undefined) updateData.comment = comment;
-    if (lat) updateData.lat = parseFloat(lat);
-    if (lng) updateData.lng = parseFloat(lng);
-    if (req.file) updateData.photoUrl = `/uploads/${req.file.filename}`;
-
+    if (lat)               updateData.lat     = parseFloat(lat);
+    if (lng)               updateData.lng     = parseFloat(lng);
+    if (status)            updateData.status  = status;  // ← on persiste le statut
+    if (req.file)          updateData.photoUrl = `/uploads/${req.file.filename}`;
+ 
     const updatedReport = await prisma.report.update({
       where: { id: parseInt(id) },
       data: updateData,
     });
-
+ 
     console.log("✅ Signalement modifié:", updatedReport);
+ 
+    // ── Notifications socket quand l'agent passe en RESOLVED ─────────────────
+    if (status === 'RESOLVED') {
+      const agentId   = req.userId;
+      const citizenId = existingReport.userId;
+ 
+      // Récupérer le nom de l'agent
+      const agent = await prisma.user.findUnique({
+        where: { id: agentId },
+        select: { firstName: true, lastName: true },
+      });
+      const agentName = agent
+        ? `${agent.firstName} ${agent.lastName}`.trim()
+        : 'Un agent';
+ 
+      const payload = {
+        signalementId : updatedReport.id,
+        status        : 'RESOLVED',
+        type          : updatedReport.type,
+        lieu          : updatedReport.lieu || null,
+        agentName,
+        citizenId,
+        citizenName   : existingReport.user
+          ? `${existingReport.user.firstName} ${existingReport.user.lastName}`.trim()
+          : 'Citoyen inconnu',
+      };
+ 
+      // 1️⃣  Toast au(x) manager(s) connecté(s) — room "MANAGER"
+      io.to('MANAGER').emit('signalement_resolu_manager', payload);
+      console.log(`📢 [SOCKET] signalement_resolu_manager émis → room MANAGER`);
+ 
+      // 2️⃣  Toast au citoyen concerné (s'il est connecté)
+      if (citizenId) {
+        const citizenSocketId = connectedUsers[citizenId];
+        if (citizenSocketId) {
+          io.to(citizenSocketId).emit('message_admin', payload);
+          console.log(`📢 [SOCKET] message_admin émis → citoyen ${citizenId}`);
+        }
+      }
+    }
+ 
     res.json(updatedReport);
-
+ 
   } catch (err) {
     console.error("❌ Erreur modification signalement:", err.message);
     res.status(500).json({ error: 'Erreur modification signalement', details: err.message });

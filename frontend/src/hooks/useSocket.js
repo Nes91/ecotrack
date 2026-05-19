@@ -1,3 +1,4 @@
+// frontend/src/hooks/useSocket.js
 import { useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 
@@ -7,23 +8,27 @@ export function useSocket(userId, role, onMessage) {
   useEffect(() => {
     if (!userId) return;
 
-socketRef.current = io(process.env.REACT_APP_API_URL, {
-  transports: ['websocket', 'polling'],
-});
-
-    socketRef.current.on("connect", () => {
-      // Envoie userId ET role pour que le serveur puisse retrouver le socket de l'agent
-      socketRef.current.emit("register", { userId, role: role || "AGENT" });
+    socketRef.current = io(process.env.REACT_APP_API_URL, {
+      transports: ["websocket", "polling"],
     });
 
-    // Notifications admin → citoyen (messages)
+    socketRef.current.on("connect", () => {
+      socketRef.current.emit("register", { userId, role: role || "CITIZEN" });
+    });
+
+    // ── Notifications admin → citoyen (messages de statut)
     socketRef.current.on("message_admin", (data) => {
       onMessage(data);
     });
 
-    // Nouvelle mission assignée → agent
+    // ── Nouvelle mission assignée → agent
     socketRef.current.on("nouvelle_mission", (data) => {
       onMessage({ ...data, eventType: "nouvelle_mission" });
+    });
+
+    // ── Signalement résolu par l'agent → manager  ← NOUVEAU
+    socketRef.current.on("signalement_resolu_manager", (data) => {
+      onMessage({ ...data, eventType: "signalement_resolu_manager" });
     });
 
     return () => {
