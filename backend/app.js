@@ -5,7 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import multer from 'multer';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { io, connectedUsers } from './server.js';
+import { io, connectedUsers, getIO } from './socket.js';
 
 const app = express();
 const prisma = new PrismaClient();
@@ -675,14 +675,17 @@ app.put('/signalements/:id', authMiddleware, upload.single('photo'), async (req,
       };
  
       // 1️⃣  Toast au(x) manager(s) connecté(s) — room "MANAGER"
-      io.to('MANAGER').emit('signalement_resolu_manager', payload);
+      if (io) {
+        io.to('MANAGER').emit('signalement_resolu_manager', payload);
+      }
       console.log(`📢 [SOCKET] signalement_resolu_manager émis → room MANAGER`);
  
       // 2️⃣  Toast au citoyen concerné (s'il est connecté)
       if (citizenId) {
         const citizenSocketId = connectedUsers[citizenId];
         if (citizenSocketId) {
-          io.to(citizenSocketId).emit('message_admin', payload);
+          const socket = getIO();
+          socket.to(citizenSocketId).emit('message_admin', payload);
           console.log(`📢 [SOCKET] message_admin émis → citoyen ${citizenId}`);
         }
       }
