@@ -231,7 +231,7 @@ return (
           <Route
             path="/tournees"
             element={
-              <ProtectedRoute user={user} allowedRoles={["ADMIN", "AGENT", "MANAGER"]}>
+              <ProtectedRoute user={user} allowedRoles={["ADMIN", "MANAGER"]}>
                 <Tournees />
               </ProtectedRoute>
             }
