@@ -481,6 +481,22 @@ app.post('/signalements', authMiddleware, upload.single('photo'), async (req, re
 
     console.log("✅ Signalement créé:", report);
 
+// 🔔 Notifications managers
+const managers = await prisma.user.findMany({
+  where: {
+    role: 'MANAGER'
+  }
+});
+
+for (const manager of managers) {
+  await prisma.notification.create({
+    data: {
+      title: 'Nouveau signalement',
+      message: `Un nouveau signalement de type ${report.type} a été créé`,
+      userId: manager.id,
+    },
+  });
+}
     // 2. Ajouter des points de gamification
     const POINTS_PER_REPORT = 10; // Points pour un signalement
     const BONUS_WITH_PHOTO = 5;   // Bonus si photo
