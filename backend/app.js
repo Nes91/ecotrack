@@ -5,7 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import multer from 'multer';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { connectedUsers, getIO } from './socket.js';
+import { connectedUsers, getIo } from './socket.js';
 
 const app = express();
 const prisma = new PrismaClient();
@@ -684,7 +684,7 @@ app.put('/signalements/:id', authMiddleware, upload.single('photo'), async (req,
       if (citizenId) {
         const citizenSocketId = connectedUsers[citizenId];
         if (citizenSocketId) {
-          const socket = getIO();
+          const socket = getIo();
           socket.to(citizenSocketId).emit('message_admin', payload);
           console.log(`📢 [SOCKET] message_admin émis → citoyen ${citizenId}`);
         }
