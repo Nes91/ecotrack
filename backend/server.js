@@ -7,8 +7,15 @@ import { setIo, connectedUsers } from './socket.js';
 const PORT = process.env.PORT || 8000;
 const httpServer = createServer(app);
 
-const io = new Server(httpServer, {
-  cors: { origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true }
+const io = new Server(server, {
+  cors: {
+    origin: [
+      'http://localhost:3000',
+      'https://ecotrack-five.vercel.app'
+    ],
+    methods: ['GET', 'POST'],
+    credentials: true
+  }
 });
 
 // Rendre io accessible depuis app.js via socket.js
