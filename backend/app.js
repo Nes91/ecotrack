@@ -698,6 +698,30 @@ app.put('/signalements/:id', authMiddleware, upload.single('photo'), async (req,
     res.status(500).json({ error: 'Erreur modification signalement', details: err.message });
   }
 });
+
+app.get('/notifications', authMiddleware, async (req, res) => {
+  try {
+    const notifications = await prisma.notification.findMany({
+      where  : { userId: req.userId, read: false },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(notifications);
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur récupération notifications' });
+  }
+});
+ 
+app.patch('/notifications/:id/read', authMiddleware, async (req, res) => {
+  try {
+    await prisma.notification.update({
+      where: { id: parseInt(req.params.id) },
+      data : { read: true },
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur mise à jour notification' });
+  }
+});
 // ─────────────────────────────────────────────────────────────────────────────
 // TOURNÉES
 // ─────────────────────────────────────────────────────────────────────────────

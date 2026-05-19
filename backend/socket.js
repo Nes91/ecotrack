@@ -1,8 +1,13 @@
-export const connectedUsers = {};
-let ioInstance = null;
-
-export const setIO = (io) => {
-  ioInstance = io;
-};
-
-export const getIO = () => ioInstance;
+let _io = null;
+const connectedUsers = {};
+ 
+export function setIo(ioInstance) {
+  _io = ioInstance;
+}
+ 
+export function getIo() {
+  return _io;
+}
+ 
+export { connectedUsers };
+ 

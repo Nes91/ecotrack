@@ -1,41 +1,36 @@
+// backend/server.js
 import app from './app.js';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { setIO, connectedUsers } from './socket.js';
+import { setIo, connectedUsers } from './socket.js';
 
+const PORT = process.env.PORT || 8000;
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
-  cors: {
-    origin: [
-      "http://localhost:3000",
-      "https://ecotrack-five.vercel.app"
-    ],
-    credentials: true
-  }
+  cors: { origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true }
 });
 
-setIO(io);
+// Rendre io accessible depuis app.js via socket.js
+setIo(io);
 
 io.on('connection', (socket) => {
-  console.log("User connecté:", socket.id);
+  console.log('Un utilisateur connecté :', socket.id);
 
   socket.on('register', ({ userId, role }) => {
-    socket.userId = userId;
     socket.join(role);
-
+    socket.userId = userId;
+    socket.role = role;
     connectedUsers[parseInt(userId)] = socket.id;
+    console.log(`✅ User ${userId} (${role}) connecté — socket ${socket.id}`);
   });
 
   socket.on('disconnect', () => {
-    if (socket.userId) {
-      delete connectedUsers[parseInt(socket.userId)];
-    }
+    if (socket.userId) delete connectedUsers[parseInt(socket.userId)];
+    console.log('Utilisateur déconnecté :', socket.id);
   });
 });
 
-const PORT = process.env.PORT || 10000;
-
-httpServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Serveur lancé sur le port ${PORT}`);
-});
+httpServer.listen(PORT, () =>
+  console.log(`🚀 Serveur ECOTRACK lancé sur http://localhost:${PORT}`)
+);
