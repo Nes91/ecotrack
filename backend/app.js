@@ -5,7 +5,7 @@ import { PrismaClient } from '@prisma/client';
 import multer from 'multer';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { io, connectedUsers, getIO } from './socket.js';
+import { connectedUsers, getIO } from './socket.js';
 
 const app = express();
 const prisma = new PrismaClient();
