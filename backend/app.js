@@ -209,7 +209,7 @@ app.get('/profil', authMiddleware, async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // AGENTS
 // ─────────────────────────────────────────────────────────────────────────────
-app.get('/agents', authMiddleware, authorize(['ADMIN']), async (req, res) => {
+app.get('/agents', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
   try {
     const agents = await prisma.user.findMany({
       where: { role: 'AGENT' },
@@ -594,7 +594,7 @@ async function checkAndAwardBadges(gamification, userId) {
 // ─────────────────────────────────────────────────────────────────────────────
 // SIGNALEMENTS - MODIFICATION
 // ─────────────────────────────────────────────────────────────────────────────
-pp.put('/signalements/:id', authMiddleware, upload.single('photo'), async (req, res) => {
+app.put('/signalements/:id', authMiddleware, upload.single('photo'), async (req, res) => {
   const { id } = req.params;
   const { type, comment, lat, lng, status } = req.body; // ← on ajoute "status"
  
