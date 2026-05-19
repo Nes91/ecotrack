@@ -9,6 +9,7 @@ import Navbar from "./components/Navbar";
 import ProfilePage from "./pages/Profile";
 import ProtectedRoute from "./pages/ProtectedRoute";
 import "./App.css";
+import AgentSignalementsPage from "./pages/AgentSignalementsPage";
 import SignalementPage from "./pages/SignalementsPage";
 import Auth from "./components/auth";
 import SignalementAdmin from "./pages/SignalementsAdmin";
@@ -231,7 +232,13 @@ return (
           {/* Signalements : liste admin pour ADMIN/MANAGER, formulaire pour AGENT/CITIZEN */}
           <Route
             path="/signalements"
-            element={isAdminOrManager ? <SignalementAdmin /> : <SignalementPage />}
+            element={
+              isAdminOrManager
+                ? <SignalementAdmin />
+                : user?.role === "AGENT"
+                ? <AgentSignalementsPage />
+                : <SignalementPage />
+            }
           />
 
           <Route
