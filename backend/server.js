@@ -34,8 +34,8 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 8000;
+const PORT = process.env.PORT || 10000;
 
-httpServer.listen(PORT, () => {
-  console.log(`Server running on ${PORT}`);
+httpServer.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Serveur lancé sur le port ${PORT}`);
 });
