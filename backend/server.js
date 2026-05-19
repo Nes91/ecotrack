@@ -5,7 +5,7 @@ import { Server } from 'socket.io';
 import { setIo, connectedUsers } from './socket.js';
 
 const PORT = process.env.PORT || 8000;
-const httpServer = createServer(app);
+const server = createServer(app);
 
 const io = new Server(server, {
   cors: {
@@ -38,6 +38,6 @@ io.on('connection', (socket) => {
   });
 });
 
-httpServer.listen(PORT, () =>
+server.listen(PORT, () =>
   console.log(`🚀 Serveur ECOTRACK lancé sur http://localhost:${PORT}`)
 );
