@@ -3,38 +3,61 @@ import { useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 
 export function useSocket(userId, role, onMessage) {
-  const socketRef = useRef(null);
+  const socketRef    = useRef(null);
+  const onMessageRef = useRef(onMessage);
+
+  // Garder onMessage à jour sans recréer la socket
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+  }, [onMessage]);
 
   useEffect(() => {
     if (!userId) return;
 
-    socketRef.current = io(process.env.REACT_APP_API_URL, {
-      transports: ["websocket", "polling"],
+    // Éviter les doubles connexions (React StrictMode)
+    if (socketRef.current?.connected) return;
+
+    const socket = io(process.env.REACT_APP_API_URL, {
+      // polling d'abord — indispensable sur Render (pas de WS à froid)
+      transports       : ["polling", "websocket"],
+      reconnection     : true,
+      reconnectionDelay: 2000,
+      timeout          : 10000,
     });
 
-    socketRef.current.on("connect", () => {
-      socketRef.current.emit("register", { userId, role: role || "CITIZEN" });
+    socketRef.current = socket;
+
+    socket.on("connect", () => {
+      console.log("✅ Socket connecté :", socket.id);
+      socket.emit("register", { userId, role: role || "CITIZEN" });
     });
 
-    // ── Notifications admin → citoyen (messages de statut)
-    socketRef.current.on("message_admin", (data) => {
-      onMessage(data);
+    socket.on("connect_error", (err) => {
+      console.warn("⚠️ Socket connect_error :", err.message);
     });
 
-    // ── Nouvelle mission assignée → agent
-    socketRef.current.on("nouvelle_mission", (data) => {
-      onMessage({ ...data, eventType: "nouvelle_mission" });
+    socket.on("message_admin", (data) => {
+      onMessageRef.current(data);
     });
 
-    // ── Signalement résolu par l'agent → manager  ← NOUVEAU
-    socketRef.current.on("signalement_resolu_manager", (data) => {
-      onMessage({ ...data, eventType: "signalement_resolu_manager" });
+    socket.on("nouvelle_mission", (data) => {
+      onMessageRef.current({ ...data, eventType: "nouvelle_mission" });
+    });
+
+    socket.on("signalement_resolu_manager", (data) => {
+      onMessageRef.current({ ...data, eventType: "signalement_resolu_manager" });
     });
 
     return () => {
-      socketRef.current?.disconnect();
+      socket.off("connect");
+      socket.off("connect_error");
+      socket.off("message_admin");
+      socket.off("nouvelle_mission");
+      socket.off("signalement_resolu_manager");
+      socket.disconnect();
+      socketRef.current = null;
     };
-  }, [userId]);
+  }, [userId, role]);
 
   return socketRef;
 }
