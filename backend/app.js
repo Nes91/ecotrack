@@ -1598,6 +1598,29 @@ app.put('/missions/:id/terminer', authMiddleware, authorize(['AGENT']), async (r
   }
 });
 
+// ─── SIGNALEMENTS : Assigner à un agent ──────────────────────────────────────
+app.put('/signalements/:id/assigner', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+  const { agentId } = req.body;
+  if (!agentId) return res.status(400).json({ error: 'agentId est obligatoire.' });
+  try {
+    const updated = await prisma.report.update({
+      where: { id: parseInt(req.params.id) },
+      data: { 
+        assignedToId: parseInt(agentId),
+        status: 'IN_PROGRESS',
+      },
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true } },
+      },
+    });
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Signalement introuvable.' });
+    res.status(500).json({ error: 'Erreur lors de l\'assignation.' });
+  }
+});
+
 const PORT = process.env.PORT || 8000;
 
 app.get("/", (req, res) => {
