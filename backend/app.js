@@ -648,49 +648,47 @@ app.put('/signalements/:id', authMiddleware, upload.single('photo'), async (req,
  
     console.log("✅ Signalement modifié:", updatedReport);
  
-    // ── Notifications socket quand l'agent passe en RESOLVED ─────────────────
-    if (status === 'RESOLVED') {
-      const agentId   = req.userId;
-      const citizenId = existingReport.userId;
- 
-      // Récupérer le nom de l'agent
-      const agent = await prisma.user.findUnique({
-        where: { id: agentId },
-        select: { firstName: true, lastName: true },
-      });
-      const agentName = agent
-        ? `${agent.firstName} ${agent.lastName}`.trim()
-        : 'Un agent';
- 
-      const payload = {
-        signalementId : updatedReport.id,
-        status        : 'RESOLVED',
-        type          : updatedReport.type,
-        lieu          : updatedReport.lieu || null,
-        agentName,
-        citizenId,
-        citizenName   : existingReport.user
-          ? `${existingReport.user.firstName} ${existingReport.user.lastName}`.trim()
-          : 'Citoyen inconnu',
-      };
- 
-      // 1️⃣  Toast au(x) manager(s) connecté(s) — room "MANAGER"
-      if (io) {
-        io.to('MANAGER').emit('signalement_resolu_manager', payload);
-      }
-      console.log(`📢 [SOCKET] signalement_resolu_manager émis → room MANAGER`);
- 
-      // 2️⃣  Toast au citoyen concerné (s'il est connecté)
-      if (citizenId) {
-        const citizenSocketId = connectedUsers[citizenId];
-        if (citizenSocketId) {
-          const socket = getIo();
-          socket.to(citizenSocketId).emit('message_admin', payload);
-          console.log(`📢 [SOCKET] message_admin émis → citoyen ${citizenId}`);
-        }
+// ── Notifications socket quand l'agent passe en RESOLVED ─────────────────
+if (status === 'RESOLVED') {
+  const io = getIo(); // ← récupérer io via socket.js
+  const agentId   = req.userId;
+  const citizenId = existingReport.userId;
+
+  const agent = await prisma.user.findUnique({
+    where: { id: agentId },
+    select: { firstName: true, lastName: true },
+  });
+  const agentName = agent
+    ? `${agent.firstName} ${agent.lastName}`.trim()
+    : 'Un agent';
+
+  const payload = {
+    signalementId : updatedReport.id,
+    status        : 'RESOLVED',
+    type          : updatedReport.type,
+    lieu          : updatedReport.lieu || null,
+    agentName,
+    citizenId,
+    citizenName   : existingReport.user
+      ? `${existingReport.user.firstName} ${existingReport.user.lastName}`.trim()
+      : 'Citoyen inconnu',
+  };
+
+  if (io) {
+    // 1️⃣ Toast au(x) manager(s) connecté(s)
+    io.to('MANAGER').emit('signalement_resolu_manager', payload);
+    console.log(`📢 [SOCKET] signalement_resolu_manager émis → room MANAGER`);
+
+    // 2️⃣ Toast au citoyen s'il est connecté
+    if (citizenId) {
+      const citizenSocketId = connectedUsers[citizenId];
+      if (citizenSocketId) {
+        io.to(citizenSocketId).emit('message_admin', payload);
+        console.log(`📢 [SOCKET] message_admin émis → citoyen ${citizenId}`);
       }
     }
- 
+  }
+}
     res.json(updatedReport);
  
   } catch (err) {
