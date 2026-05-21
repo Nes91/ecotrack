@@ -388,6 +388,8 @@ useEffect(() => {
 
   const handleAssign = async () => {
     if (!selectedAgent) return;
+    console.log("🔍 signalement:", signalement);
+    console.log("🔍 id utilisé:", signalement.id || signalement._id);
     setLoading(true);
     try {
       await API.put(`/signalements/${signalement.id || signalement._id}/assigner`, { agentId: parseInt(selectedAgent) });
