@@ -650,12 +650,15 @@ app.put('/signalements/:id', authMiddleware, upload.single('photo'), async (req,
  
 // ── Notifications socket quand l'agent passe en RESOLVED ─────────────────
 if (status === 'RESOLVED') {
-  const io = getIo(); 
+  const io = getIo();
+  
+  // ← déclarez citizenId ICI en premier
+  const citizenId = existingReport.userId;
+  const agentId   = req.userId;
+
   console.log("🔍 ConnectedUsers au moment du RESOLVED:", connectedUsers);
   console.log("🔍 citizenId recherché:", citizenId);
   console.log("🔍 citizenSocketId trouvé:", connectedUsers[citizenId]);
-  const agentId   = req.userId;
-  const citizenId = existingReport.userId;
 
   const agent = await prisma.user.findUnique({
     where: { id: agentId },
@@ -678,17 +681,13 @@ if (status === 'RESOLVED') {
   };
 
   if (io) {
-    // 1️⃣ Toast au(x) manager(s) connecté(s)
     io.to('MANAGER').emit('signalement_resolu_manager', payload);
     console.log(`📢 [SOCKET] signalement_resolu_manager émis → room MANAGER`);
 
-    // 2️⃣ Toast au citoyen s'il est connecté
-    if (citizenId) {
-      const citizenSocketId = connectedUsers[citizenId];
-      if (citizenSocketId) {
-        io.to(citizenSocketId).emit('message_admin', payload);
-        console.log(`📢 [SOCKET] message_admin émis → citoyen ${citizenId}`);
-      }
+    const citizenSocketId = connectedUsers[citizenId];
+    if (citizenSocketId) {
+      io.to(citizenSocketId).emit('message_admin', payload);
+      console.log(`📢 [SOCKET] message_admin émis → citoyen ${citizenId}`);
     }
   }
 }

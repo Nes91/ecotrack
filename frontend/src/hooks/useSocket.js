@@ -29,6 +29,7 @@ export function useSocket(userId, role, onMessage) {
 
     socket.on("connect", () => {
       console.log("✅ Socket connecté :", socket.id);
+      console.log("🔌 Socket register:", { userId, role });
       socket.emit("register", { userId, role: role || "CITIZEN" });
     });
 
