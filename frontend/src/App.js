@@ -89,34 +89,8 @@ export default function App() {
     return storedUser ? JSON.parse(storedUser) : null;
   });
 
-useEffect(() => {
-    if (user?.role === "CITIZEN") {
-      // Ici tu peux fetch le dernier message du citoyen
-      (async () => {
-        try {
-          // Pour tester, tu peux mettre un faux message d'abord
-          const lastMessage = {
-            signalementId: 123,
-            message: "Votre signalement a été pris en charge par l'admin."
-          };
-
-          setSocketToast({
-            title: `Signalement #${lastMessage.signalementId}`,
-            message: lastMessage.message,
-            type: "info",
-            onClick: () => {
-              window.location.href = `/signalements/${lastMessage.signalementId}`;
-            }
-          });
-        } catch (err) {
-          console.error("Erreur toast citoyen :", err);
-        }
-      })();
-    }
-  }, [user]);
-
-
-  const handleLoginSuccess = async (userData) => {
+// initialize socket listener at top-level of the component (hooks must be called unconditionally)
+const handleLoginSuccess = async (userData) => {
     console.log("✅ Login success:", userData);
     localStorage.setItem("token", userData.token);
     localStorage.setItem("role", userData.role);
@@ -131,29 +105,8 @@ useEffect(() => {
   localStorage.setItem("user", JSON.stringify(userWithNames));
   setUser(userWithNames);
 
-  // ── Si c'est un citoyen, récupérer son dernier signalement
-  if (userWithNames.role === "CITIZEN") {
-    try {
-      const res = await fetch(`/api/signalements/last/${userWithNames.id}`);
-      if (!res.ok) throw new Error("Erreur lors de la récupération du dernier signalement");
-
-      const lastSignalement = await res.json();
-
-      // Vérifie qu'on a bien un signalement avec id et message
-      if (lastSignalement?.id && lastSignalement?.message) {
-        setSocketToast({
-          title: `Signalement #${lastSignalement.id}`,
-          message: lastSignalement.message,
-          type: "info",
-          onClick: () => window.location.href = "/signalements"
-        });
-      }
-
-    } catch (err) {
-      console.error("Erreur lors de la récupération du dernier signalement :", err);
-    }
-  }
-  };
+// Socket initialization moved to top-level hook in the component (useSocket(...) above)
+};
 
 useSocket(user?.id, user?.role, (data) => {
   if (!data) return;
