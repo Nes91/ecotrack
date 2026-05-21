@@ -38,7 +38,12 @@ export function useSocket(userId, role, onMessage) {
     });
 
     socket.on("message_admin", (data) => {
-      onMessageRef.current(data);
+      onMessageRef.current({
+        ...data,
+        id:     data.id ?? data.signalementId,
+        status: data.status || "RESOLVED",
+        message: data.message || "Votre signalement a été traité avec succès.",
+      });
     });
 
     socket.on("nouvelle_mission", (data) => {

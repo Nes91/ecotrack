@@ -683,12 +683,6 @@ if (status === 'RESOLVED') {
   if (io) {
     io.to('MANAGER').emit('signalement_resolu_manager', payload);
     console.log(`📢 [SOCKET] signalement_resolu_manager émis → room MANAGER`);
-
-    const citizenSocketId = connectedUsers[citizenId];
-    if (citizenSocketId) {
-      io.to(citizenSocketId).emit('message_admin', payload);
-      console.log(`📢 [SOCKET] message_admin émis → citoyen ${citizenId}`);
-    }
   }
 }
     res.json(updatedReport);

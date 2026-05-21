@@ -48,7 +48,14 @@ export default function SignalementModal({ data, config, onClose }) {
 
   const currentIndex = STATUS_ORDER[data.status] ?? 0;
   const isRejected = data.status === "REJECTED";
+const TYPE_LABELS = {
+  success: "Succès",
+  error: "Erreur",
+  warning: "Attention",
+  info: "Information",
+};
 
+const displayType = TYPE_LABELS[data.type] || data.type;
   const signalementId = data.id ?? data.signalementId ?? "—";
   const formattedDate = data.createdAt
     ? new Date(data.createdAt).toLocaleDateString("fr-FR", {
@@ -165,7 +172,7 @@ export default function SignalementModal({ data, config, onClose }) {
               display: "flex", gap: 16, marginTop: 16, flexWrap: "wrap",
             }}>
               {data.type && (
-                <MetaChip icon="🏷️" label={data.type} />
+                <MetaChip icon="🏷️" label={displayType} />
               )}
               {formattedDate && (
                 <MetaChip icon="📅" label={`Créé le ${formattedDate}`} />

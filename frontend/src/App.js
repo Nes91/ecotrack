@@ -110,50 +110,41 @@ const handleLoginSuccess = async (userData) => {
 
 useSocket(user?.id, user?.role, (data) => {
   if (!data) return;
- 
+
   // ── Toast MANAGER : signalement résolu par un agent ──────────────────────
   if (data.eventType === "signalement_resolu_manager" && user.role === "MANAGER") {
     setManagerToast(data);
     return;
   }
- 
-  // ── Toast CITOYEN : mise à jour de statut ───────────────────────────────
+
+  // ── Toast CITOYEN : mise à jour de statut ────────────────────────────────
   if (user.role !== "CITIZEN") return;
- 
-  let toastConfig = {
-    title: `Signalement #${data.signalementId}`,
-    type: "info",
-    message: "",
+
+  // Normalisation du payload reçu via socket
+  const normalizedData = {
+    ...data,
+    id     : data.id ?? data.signalementId,
+    status : data.status || "RESOLVED",
+    message: data.message || "Votre signalement a été traité avec succès.",
   };
- 
-  switch (data.status) {
-    case "PENDING":
-      toastConfig.type = "info";
-      toastConfig.message = "Votre signalement a bien été reçu.";
-      break;
-    case "IN_PROGRESS":
-      toastConfig.type = "warning";
-      toastConfig.message = "Votre signalement est en cours de traitement.";
-      break;
-    case "RESOLVED":
-      toastConfig.type = "success";
-      toastConfig.message = "Votre signalement a été traité avec succès.";
-      break;
-    case "REJECTED":
-      toastConfig.type = "error";
-      toastConfig.message = "Votre signalement a été rejeté.";
-      break;
-    default:
-      toastConfig.message = "Mise à jour de votre signalement.";
-  }
- 
+
+  const messages = {
+    PENDING    : "Votre signalement a bien été reçu.",
+    IN_PROGRESS: "Votre signalement est en cours de traitement.",
+    RESOLVED   : "Votre signalement a été traité avec succès.",
+    REJECTED   : "Votre signalement a été rejeté.",
+  };
+
   setSocketToast({
-    ...toastConfig,
+    ...normalizedData,
+    type   : normalizedData.status === "RESOLVED" ? "success"
+           : normalizedData.status === "REJECTED" ? "error"
+           : normalizedData.status === "IN_PROGRESS" ? "warning"
+           : "info",
+    message: normalizedData.message || messages[normalizedData.status] || "Mise à jour de votre signalement.",
     onClick: () => (window.location.href = "/signalements"),
   });
 });
- 
-
   const handleLogout = () => {
     localStorage.clear();
     setUser(null);
