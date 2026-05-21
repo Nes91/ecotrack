@@ -710,6 +710,25 @@ app.get('/notifications', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Erreur récupération notifications' });
   }
 });
+
+app.post('/signalements/:id/notifier-citoyen', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+  const { message, citizenId } = req.body;
+  try {
+    const io = getIo();
+    const citizenSocketId = connectedUsers[parseInt(citizenId)];
+    
+    if (io && citizenSocketId) {
+      io.to(citizenSocketId).emit('message_admin', {
+        signalementId : parseInt(req.params.id),
+        status        : 'RESOLVED',
+        message       : message,
+      });
+    }
+    res.json({ success: true, online: !!citizenSocketId });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur notification citoyen' });
+  }
+});
  
 app.patch('/notifications/:id/read', authMiddleware, async (req, res) => {
   try {

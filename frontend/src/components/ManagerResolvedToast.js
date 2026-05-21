@@ -42,25 +42,30 @@ export default function ManagerResolvedToast({ data, onClose }) {
     setTimeout(onClose, 400);
   };
 
-  const handleSendMessage = async () => {
-    setSending(true);
-    try {
-      const stored = localStorage.getItem("user");
-      const user   = stored ? JSON.parse(stored) : null;
-      await API.put(
-        `/signalements/${data.signalementId}`,
-        { managerMessage: customMsg || DEFAULT_MSG },
-        { headers: { Authorization: `Bearer ${user?.token}` } }
-      );
-      await markAsRead();
-      setSent(true);
-    } catch (err) {
-      console.error("Erreur envoi message :", err);
-      setSent(true); // on affiche quand même le succès côté UI
-    } finally {
-      setSending(false);
-    }
-  };
+const handleSendMessage = async () => {
+  setSending(true);
+  try {
+    const stored = localStorage.getItem("user");
+    const user   = stored ? JSON.parse(stored) : null;
+
+    await API.post(
+      `/signalements/${data.signalementId}/notifier-citoyen`,
+      { 
+        message   : customMsg || DEFAULT_MSG,
+        citizenId : data.citizenId,
+      },
+      { headers: { Authorization: `Bearer ${user?.token}` } }
+    );
+
+    await markAsRead();
+    setSent(true);
+  } catch (err) {
+    console.error("Erreur envoi message :", err);
+    setSent(true);
+  } finally {
+    setSending(false);
+  }
+};
 
   return (
     <>
