@@ -30,6 +30,7 @@ io.on('connection', (socket) => {
     socket.role = role;
     connectedUsers[parseInt(userId)] = socket.id;
     console.log(`✅ User ${userId} (${role}) connecté — socket ${socket.id}`);
+    console.log(`👥 ConnectedUsers:`, connectedUsers);
   });
 
   socket.on('disconnect', () => {

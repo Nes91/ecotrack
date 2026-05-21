@@ -650,7 +650,10 @@ app.put('/signalements/:id', authMiddleware, upload.single('photo'), async (req,
  
 // ── Notifications socket quand l'agent passe en RESOLVED ─────────────────
 if (status === 'RESOLVED') {
-  const io = getIo(); // ← récupérer io via socket.js
+  const io = getIo(); 
+  console.log("🔍 ConnectedUsers au moment du RESOLVED:", connectedUsers);
+  console.log("🔍 citizenId recherché:", citizenId);
+  console.log("🔍 citizenSocketId trouvé:", connectedUsers[citizenId]);
   const agentId   = req.userId;
   const citizenId = existingReport.userId;
 
