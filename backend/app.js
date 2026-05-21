@@ -1638,6 +1638,33 @@ app.put('/signalements/:id/assigner', authMiddleware, authorize(['ADMIN', 'MANAG
   }
 });
 
+app.post('/signalements/:id/message', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+  const { message } = req.body;
+  if (!message) return res.status(400).json({ error: 'Message obligatoire' });
+
+  try {
+    const report = await prisma.report.findUnique({
+      where: { id: parseInt(req.params.id) },
+      include: { user: { select: { id: true } } },
+    });
+    if (!report) return res.status(404).json({ error: 'Signalement introuvable' });
+
+    const io = getIo();
+    const citizenSocketId = connectedUsers[report.user?.id];
+    if (io && citizenSocketId) {
+      io.to(citizenSocketId).emit('message_admin', {
+        signalementId : report.id,
+        status        : report.status,
+        message,
+      });
+    }
+
+    res.json({ success: true, online: !!citizenSocketId });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur envoi message', details: err.message });
+  }
+});
+
 const PORT = process.env.PORT || 8000;
 
 app.get("/", (req, res) => {
