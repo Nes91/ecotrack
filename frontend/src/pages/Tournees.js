@@ -748,9 +748,11 @@ useEffect(() => {
 }, [role, location.search]);
   useEffect(() => { setTimeout(() => setIn(true), 60); }, []);
 
-  useEffect(() => {
+useEffect(() => {
+  if (role !== 'AGENT') {
     API.get("/agents").then(r => setAgents(r.data)).catch(console.error);
-  }, []);
+  }
+}, []);
 
 useEffect(() => {
   API.get("/routes")
