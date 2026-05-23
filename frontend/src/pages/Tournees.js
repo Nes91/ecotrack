@@ -4,6 +4,7 @@ import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from "react-
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useOSRMRoute } from "../hooks/useOSRMRoute";
+import { useLocation } from 'react-router-dom';
 // ── Role theming ───────────────────────────────────────────────────────────
 const ROLE_THEME = {
   ADMIN:   { label: "Administrateur", accent: "#8b5cf6" },
@@ -516,7 +517,7 @@ function AgentRouteMap({ stops, depot }) {
   );
 }
 
-function AgentTourView({ tour, loading, onAdvanceStop }) {
+function AgentTourView({ tour, allTours, loading, onAdvanceStop, onSelectTour }) {
   if (loading) return (
     <div style={{ textAlign: "center", padding: "64px 0" }}>
       <p style={{ fontFamily: "'Roboto',sans-serif", fontSize: 16, color: "#9ca3af" }}>
@@ -546,7 +547,33 @@ function AgentTourView({ tour, loading, onAdvanceStop }) {
   return (
       
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-
+    {/* Sélecteur de tournée */}
+    {allTours?.length > 1 && (
+      <div style={{
+        background: "#fff", borderRadius: 14, border: "1.5px solid #e5e7eb",
+        padding: "14px 18px", display: "flex", alignItems: "center", gap: 12,
+        boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+      }}>
+        <span style={{ fontFamily: "'Roboto',sans-serif", fontSize: 13, fontWeight: 600, color: "#374151", flexShrink: 0 }}>
+          🗺️ Mes tournées :
+        </span>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {allTours.map(t => (
+            <button key={t.id} onClick={() => onSelectTour(t)}
+              style={{
+                padding: "5px 12px", borderRadius: 8, cursor: "pointer",
+                border: `1.5px solid ${tour?.id === t.id ? "#22c55e" : "#e5e7eb"}`,
+                background: tour?.id === t.id ? "#22c55e" : "#f9fafb",
+                color: tour?.id === t.id ? "#fff" : "#6b7280",
+                fontFamily: "'Roboto',sans-serif", fontSize: 12, fontWeight: 600,
+                transition: "all 0.18s",
+              }}>
+              {t.name || `Tournée #${t.id}`}
+            </button>
+          ))}
+        </div>
+      </div>
+    )}
       {/* Header tournée */}
       <div style={{ background: "#fff", borderRadius: 16, border: "1.5px solid #e5e7eb", padding: "20px 24px", boxShadow: "0 2px 12px rgba(0,0,0,0.05)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
@@ -699,22 +726,26 @@ const [optimizeForm, setOptimizeForm] = useState({
   fillThreshold: 70,
   name: ""
 });
+const [allTours, setAllTours] = useState([]);
+const location = useLocation();
 
-// Charge la tournée de l'agent au démarrage
 useEffect(() => {
   if (role === 'AGENT') {
     setLoadingTour(true);
     API.get('/routes')
       .then(r => {
-        // Prend la première tournée assignée à cet agent
-        const tour = r.data[0] || null;
+        const params = new URLSearchParams(location.search);
+        const idParam = params.get('id');
+        setAllTours(r.data);
+        const tour = idParam
+          ? r.data.find(t => t.id === parseInt(idParam)) || r.data[0] || null
+          : r.data[0] || null;
         setMyTour(tour);
       })
       .catch(console.error)
       .finally(() => setLoadingTour(false));
   }
-}, [role]);
-
+}, [role, location.search]);
   useEffect(() => { setTimeout(() => setIn(true), 60); }, []);
 
   useEffect(() => {
@@ -1021,11 +1052,13 @@ const filtered = missions.filter(m => {
           
           {/* Grid */}
           {role === 'AGENT' ? (
-  <AgentTourView
-    tour={myTour}
-    loading={loadingTour}
-    onAdvanceStop={handleAdvanceStop}
-  />
+<AgentTourView
+  tour={myTour}
+  allTours={allTours}
+  loading={loadingTour}
+  onAdvanceStop={handleAdvanceStop}
+  onSelectTour={(t) => setMyTour(t)}
+/>
 ) : (
   filtered.length === 0 ? (
     <div style={{ textAlign: "center", padding: "64px 0" }}>
