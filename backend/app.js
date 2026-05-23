@@ -1572,24 +1572,32 @@ app.post('/defis/:id/inscrire', authMiddleware, async (req, res) => {
 // ─── DASHBOARD AGENT ──────────────────────────────────────────────────────────
 app.get('/dashboard/agent', authMiddleware, authorize(['AGENT']), async (req, res) => {
   try {
-    const [tournees, containers] = await Promise.all([
+    const [tournees, signalements] = await Promise.all([
       prisma.route.findMany({
         where: { agentId: req.userId },
         include: {
           stops: { include: { container: true } },
         },
+        orderBy: { createdAt: 'desc' },
       }),
-      prisma.route.findMany({
-        where: { agentId: req.userId, status: { in: ['ASSIGNED', 'IN_PROGRESS'] } },
-        include: { stops: true },
+      prisma.report.findMany({
+        where: { assignedToId: req.userId },
+        include: {
+          user: { select: { id: true, firstName: true, lastName: true } },
+        },
+        orderBy: { createdAt: 'desc' },
       }),
     ]);
 
-    const nbContainers = containers.reduce((acc, r) => acc + (r.stops?.length || 0), 0);
+    const activeContainers = tournees
+      .filter(r => ['ASSIGNED', 'IN_PROGRESS'].includes(r.status))
+      .reduce((acc, r) => acc + (r.stops?.length || 0), 0);
 
     res.json({
-      nbTournees:   tournees.length,
-      nbContainers: nbContainers,
+      nbTournees   : tournees.length,
+      nbContainers : activeContainers,
+      tournees,           // ← liste complète
+      signalements,       // ← signalements assignés à cet agent
     });
   } catch (err) {
     console.error(err);
