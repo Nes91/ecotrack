@@ -365,7 +365,7 @@ function SignalementsPanel({ scrollRef }) {
     const matchFilter = filter === "tous" || s.status === filter || s.type === filter;
     const q = search.toLowerCase();
     const matchSearch = !q
-      || (s.createdBy?.firstName + " " + s.createdBy?.lastName).toLowerCase().includes(q)
+      || (`${s.user?.firstName || s.createdBy?.firstName || ""} ${s.user?.lastName || s.createdBy?.lastName || ""}`).toLowerCase().includes(q)
       || (s.createdBy?.name || "").toLowerCase().includes(q)
       || (s.type || "").toLowerCase().includes(q)
       || (s.message || s.description || "").toLowerCase().includes(q)
@@ -438,8 +438,10 @@ function SignalementsPanel({ scrollRef }) {
           {!loading && !error && filtered.map((s, i) => {
             const type   = typeBadge(s.type);
             const status = statusBadge(s.status);
-            const nom    = s.createdBy ? `${s.createdBy.firstName || ""} ${s.createdBy.lastName || s.createdBy.name || ""}`.trim() : "Inconnu";
-            const email  = s.createdBy?.email || "";
+            const nom   = (s.user || s.createdBy)
+              ? `${(s.user || s.createdBy).firstName || ""} ${(s.user || s.createdBy).lastName || (s.createdBy?.name) || ""}`.trim()
+              : "Inconnu";
+            const email = s.user?.email || s.createdBy?.email || "";
             const lieu   = s.lieu || s.location?.address || s.adresse || "—";
             const msg    = s.message || s.description || "—";
             const date   = s.createdAt ? new Date(s.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : null;
