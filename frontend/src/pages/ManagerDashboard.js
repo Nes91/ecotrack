@@ -225,21 +225,29 @@ export default function ManagerDashboard() {
   const [in_, setIn]            = useState(false);
   const [tab, setTab]           = useState("overview"); // overview | containers | signalements | routes
 
-  useEffect(() => {
-    setTimeout(() => setIn(true), 60);
+  const fetchData = () => {
     Promise.all([
-      API.get("/dashboard/manager"),
-      API.get("/containers"),
-      API.get("/signalements"),
-      API.get("/routes"),
-    ]).then(([dashRes, contRes, sigRes, routeRes]) => {
-      setData(dashRes.data);
-      setContainers(contRes.data || []);
-      setSignalements(sigRes.data || []);
-      setRoutes(routeRes.data || []);
-    }).catch(console.error)
-      .finally(() => setLoading(false));
-  }, []);
+    API.get("/dashboard/manager"),
+    API.get("/containers"),
+    API.get("/signalements"),
+    API.get("/routes"),
+  ]).then(([dashRes, contRes, sigRes, routeRes]) => {
+    setData(dashRes.data);
+    setContainers(contRes.data || []);
+    setSignalements(sigRes.data || []);
+    setRoutes(routeRes.data || []);
+  }).catch(console.error)
+    .finally(() => setLoading(false));
+};
+
+useEffect(() => {
+  setTimeout(() => setIn(true), 60);
+  fetchData();
+
+  // Rafraîchissement automatique toutes les 30 secondes
+  const interval = setInterval(fetchData, 30000);
+  return () => clearInterval(interval);
+}, []);
 
   if (loading) return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Roboto',sans-serif", color: "#9ca3af", background: "linear-gradient(150deg,#f0fdf4,#fafafa)" }}>
@@ -297,6 +305,22 @@ export default function ManagerDashboard() {
             <p style={{ fontFamily: "'Roboto',sans-serif", fontSize: 13, color: "#6b7280" }}>
               Vue opérationnelle en temps réel · {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
             </p>
+            <button
+              onClick={fetchData}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "6px 14px", borderRadius: 9,
+                border: "1.5px solid #e5e7eb", background: "#fff",
+                color: "#374151", fontSize: 12, fontWeight: 600,
+                cursor: "pointer", fontFamily: "'Roboto',sans-serif",
+                boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+                transition: "all 0.18s",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = "#22c55e"; e.currentTarget.style.color = "#16a34a"; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = "#e5e7eb"; e.currentTarget.style.color = "#374151"; }}
+            >
+              ↻ Actualiser
+            </button>
           </div>
 
           {/* Tabs */}
