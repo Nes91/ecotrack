@@ -112,7 +112,7 @@ function ConfirmModal({ title, desc, confirmLabel, confirmColor, onConfirm, onCa
 }
 
 // ── Detail Drawer ─────────────────────────────────────────────────────────────
-function DetailDrawer({ s, onClose, onStatusChange, showToast, setAssignModal }) {
+function DetailDrawer({ s, onClose, onStatusChange, showToast, setAssignModal, geocoded = {} }) {
 
   const [status,  setStatus]  = useState(s.status || "en_attente");
   const [saving,  setSaving]  = useState(false);
@@ -124,7 +124,9 @@ function DetailDrawer({ s, onClose, onStatusChange, showToast, setAssignModal })
   const st    = getStatus(status);
   const nom   = nomComplet(s);
 const email = s.user?.email || "—";
-const lieu = s.lieu || (s.lat && s.lng ? `${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}` : "—");
+const lieu = s.lieu || s.location?.address || s.adresse
+  || geocoded[s.id || s._id]
+  || (s.lat && s.lng ? `${parseFloat(s.lat).toFixed(4)}, ${parseFloat(s.lng).toFixed(4)}` : "—");
 const desc  = s.comment || "—";
   const date  = s.createdAt ? new Date(s.createdAt).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
   const ac    = avatarColor(nom);
@@ -286,12 +288,14 @@ const desc  = s.comment || "—";
 }
 
 // ── Signalement Card ──────────────────────────────────────────────────────────
-function SignalCard({ s, index, onView, onDelete }) {
+function SignalCard({ s, index, onView, onDelete, geocoded = {} }) {
   const cat  = getCat(s.type || s.category);
   const st   = getStatus(s.status);
   const nom  = nomComplet(s);
-const lieu = s.lieu || (s.lat && s.lng ? `${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}` : "—");
-const msg  = s.message || s.description || "—";
+  const lieu = s.lieu || s.location?.address || s.adresse
+    || geocoded[s.id || s._id]
+    || (s.lat && s.lng ? `${parseFloat(s.lat).toFixed(4)}, ${parseFloat(s.lng).toFixed(4)}` : "—");
+  const msg  = s.message || s.description || "—";
   const date = s.createdAt ? new Date(s.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }) : "—";
   const ac   = avatarColor(nom);
 
@@ -502,6 +506,34 @@ export default function SignalementsAdmin() {
   const [searchFocus, setSearchFocus] = useState(false);
   const [assignModal, setAssignModal] = useState(null);
   const PER_PAGE = 12;
+  const [geocoded, setGeocoded] = useState({});
+
+  async function reverseGeocode(lat, lng) {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lng=${lng}&format=json&accept-language=fr`
+    );
+    const data = await res.json();
+    const a = data.address;
+    return [
+      a.road || a.pedestrian || a.path || "",
+      a.suburb || a.quarter || a.neighbourhood || "",
+      a.city || a.town || a.village || a.municipality || "",
+    ].filter(Boolean).join(", ") || data.display_name?.split(",").slice(0, 2).join(", ") || "—";
+  } catch {
+    return null;
+  }
+}
+
+useEffect(() => {
+  const toGeocode = items.filter(s => !s.lieu && s.lat && s.lng);
+  toGeocode.forEach(async (s) => {
+    const key = s.id || s._id;
+    if (geocoded[key]) return;
+    const adresse = await reverseGeocode(s.lat, s.lng);
+    if (adresse) setGeocoded(prev => ({ ...prev, [key]: adresse }));
+  });
+}, [items]);
 
   const showToast = useCallback((msg, type = "success", sub = "") => {
     const id = ++toastId.current;
@@ -712,6 +744,7 @@ useEffect(() => {
                   index={i}
                   onView={setDetail}
                   onDelete={id => setConfirm({ id })}
+                  geocoded={geocoded}
                 />
               ))}
             </div>
@@ -739,9 +772,8 @@ useEffect(() => {
           )}
         </div>
       </div>
-
       {detail && (
-        <DetailDrawer s={detail} onClose={() => setDetail(null)} onStatusChange={handleStatusChange} showToast={showToast} setAssignModal={setAssignModal} />
+        <DetailDrawer s={detail} onClose={() => setDetail(null)} onStatusChange={handleStatusChange} showToast={showToast} setAssignModal={setAssignModal} geocoded={geocoded} />
       )}
 {assignModal && (
   <AssignAgentModal

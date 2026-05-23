@@ -4,6 +4,23 @@ import { useNavigate } from "react-router-dom";
 import API from "../api/api";
 import socket from '../socket/socket';
 
+async function reverseGeocode(lat, lng) {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lng=${lng}&format=json&accept-language=fr`
+    );
+    const data = await res.json();
+    const a = data.address;
+    return [
+      a.road || a.pedestrian || a.path || "",
+      a.suburb || a.quarter || a.neighbourhood || "",
+      a.city || a.town || a.village || a.municipality || "",
+    ].filter(Boolean).join(", ") || data.display_name?.split(",").slice(0, 2).join(", ") || "—";
+  } catch {
+    return null;
+  }
+}
+
 // ── Compteur animé ────────────────────────────────────────────────────────────
 function useCounter(target, duration = 1800) {
   const [value, setValue] = useState(0);
@@ -33,7 +50,7 @@ const TYPE_STYLE = {
   "Déchets sauvages":    { bg: "#fef9c3", color: "#854d0e", icon: "🗑️" },
   "Conteneur plein":     { bg: "#fee2e2", color: "#991b1b", icon: "📦" },
   "Déversement illégal": { bg: "#fce7f3", color: "#9d174d", icon: "☣️" },
-  "Dégradation":         { bg: "#ede9fe", color: "#5b21b6", icon: "🔨" },
+  "Dégradation":        { bg: "#ede9fe", color: "#5b21b6", icon: "🔨" },
   "Autre":               { bg: "#f1f5f9", color: "#475569", icon: "📋" },
 };
 function typeBadge(type) {
@@ -329,6 +346,7 @@ function SignalementsPanel({ scrollRef }) {
   const [expanded, setExpanded]       = useState(null);
   const [assignModal, setAssignModal] = useState(null); // signalement en cours d'assignation
   const [assignSuccess, setAssignSuccess] = useState(null);
+  const [geocoded, setGeocoded] = useState({});
 
   useEffect(() => {
     // Charger signalements
@@ -342,6 +360,18 @@ function SignalementsPanel({ scrollRef }) {
       .then(r => setAgents(Array.isArray(r.data) ? r.data : r.data.agents || []))
       .catch(() => setAgents([]));
   }, []);
+
+  useEffect(() => {
+  const toGeocode = items.filter(s => !s.lieu && s.lat && s.lng);
+  toGeocode.forEach(async (s) => {
+    const key = s.id || s._id;
+    if (geocoded[key]) return; // déjà géocodé
+    const adresse = await reverseGeocode(s.lat, s.lng);
+    if (adresse) {
+      setGeocoded(prev => ({ ...prev, [key]: adresse }));
+    }
+  });
+}, [items]);
 
   const handleAssign = async (signalementId, agentId) => {
     try {
@@ -443,10 +473,11 @@ function SignalementsPanel({ scrollRef }) {
               : "Inconnu";
               const msg = s.comment || s.message || s.description || "—";
             const email = s.user?.email || s.createdBy?.email || "—";
-const lieu  = s.lieu || s.location?.address || s.adresse
-  || (s.lat && s.lng ? `${parseFloat(s.lat).toFixed(4)}, ${parseFloat(s.lng).toFixed(4)}` : "—");
+            const lieu = s.lieu || s.location?.address || s.adresse
+              || geocoded[s.id || s._id]
+              || (s.lat && s.lng ? `${parseFloat(s.lat).toFixed(4)}, ${parseFloat(s.lng).toFixed(4)}` : "—");
             const date   = s.createdAt ? new Date(s.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : null;
-            const key    = s._id || s.id || i;
+            const key  = s._id || s.id || i;
             const isOpen = expanded === key;
             const assignedAgent = s.assignedTo
               ? `${s.assignedTo.firstName || ""} ${s.assignedTo.lastName || s.assignedTo.name || ""}`.trim()
