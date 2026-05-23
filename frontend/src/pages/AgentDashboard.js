@@ -209,26 +209,17 @@ export default function AgentDashboard({ user }) {
   const now = new Date();
   const dateStr = now.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
-  // Charger les missions de l'agent
-  // FIX 500: la route /missions/mes-missions doit recevoir l'identité depuis
-  // le token JWT (middleware auth). Vérifiez que votre intercepteur Axios
-  // envoie bien le header Authorization. Si la route diffère, adaptez ici.
-  useEffect(() => {
-    API.get('/missions/mes-missions')
-      .then(res => setMissions(res.data))
-      .catch(console.error);
-  }, []);
-
-  // Charger les stats
-  // FIX 404: suppression de l'id dans l'URL — le backend identifie l'agent
-  // via le token JWT. Si votre backend requiert l'id, utilisez :
-  // API.get(`/dashboard/agent?id=${user.id}`)
-  useEffect(() => {
-    setTimeout(() => setVisible(true), 60);
-    API.get('/dashboard/agent')
-      .then(res => setStats(res.data))
-      .catch(console.error);
-  }, []);
+  // Remplacez les deux useEffect existants par :
+useEffect(() => {
+  setTimeout(() => setVisible(true), 60);
+  Promise.all([
+    API.get('/dashboard/agent'),
+    API.get('/missions/mes-missions'),
+  ]).then(([dashRes, missionsRes]) => {
+    setStats(dashRes.data);
+    setMissions(missionsRes.data);
+  }).catch(console.error);
+}, []);
 
   // Socket : écouter les nouvelles missions assignées
   useSocket(user?.id, user?.role || "AGENT", (data) => {
@@ -400,7 +391,92 @@ export default function AgentDashboard({ user }) {
           )}
         </div>
       </div>
+      {/* Mes Tournées */}
+{stats?.tournees?.length > 0 && (
+  <div style={{ marginTop: 40 }}>
+    <h2 style={{ color: '#0f172a', fontSize: 22, fontWeight: 700, marginBottom: 16, fontFamily: "'Roboto', sans-serif" }}>
+      Mes Tournées
+      <span style={{ marginLeft: 10, fontSize: 13, fontWeight: 700, padding: "3px 10px", borderRadius: 99, background: "rgba(139,92,246,0.1)", color: "#7c3aed", border: "1px solid #ddd6fe" }}>
+        {stats.tournees.length}
+      </span>
+    </h2>
+    {stats.tournees.map(tournee => (
+      <div key={tournee.id} style={{
+        background: '#fff', border: '1px solid #e2e8f0',
+        borderRadius: 16, padding: '20px 24px', marginBottom: 12,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div>
+            <p style={{ color: '#0f172a', fontWeight: 700, margin: '0 0 4px', fontFamily: "'Roboto', sans-serif", fontSize: 15 }}>
+              🗺️ {tournee.name || `Tournée #${tournee.id}`}
+            </p>
+            <p style={{ color: '#94a3b8', fontSize: 12, margin: 0 }}>
+              {tournee.stops?.length || 0} arrêt(s)
+              {tournee.totalDistanceKm ? ` · ${tournee.totalDistanceKm} km` : ''}
+            </p>
+          </div>
+          <span style={{
+            padding: '4px 12px', borderRadius: 99, fontSize: 12, fontWeight: 600,
+            background: tournee.status === 'COMPLETED' ? '#dcfce7' : tournee.status === 'IN_PROGRESS' ? '#fef9c3' : '#f5f3ff',
+            color: tournee.status === 'COMPLETED' ? '#16a34a' : tournee.status === 'IN_PROGRESS' ? '#854d0e' : '#7c3aed',
+          }}>
+            {tournee.status === 'COMPLETED' ? '✅ Terminée' : tournee.status === 'IN_PROGRESS' ? '🔄 En cours' : '⏳ En attente'}
+          </span>
+        </div>
+        <button
+          onClick={() => navigate('/tournees')}
+          style={{
+            marginTop: 8, padding: '7px 16px', borderRadius: 9, border: 'none',
+            background: 'linear-gradient(135deg, #8b5cf6, #6366f1)',
+            color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+          }}
+        >
+          Voir la tournée →
+        </button>
+      </div>
+    ))}
+  </div>
+)}
 
+{/* Signalements assignés */}
+{stats?.signalements?.length > 0 && (
+  <div style={{ marginTop: 40 }}>
+    <h2 style={{ color: '#0f172a', fontSize: 22, fontWeight: 700, marginBottom: 16, fontFamily: "'Roboto', sans-serif" }}>
+      Signalements assignés
+      <span style={{ marginLeft: 10, fontSize: 13, fontWeight: 700, padding: "3px 10px", borderRadius: 99, background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid #fca5a5" }}>
+        {stats.signalements.length}
+      </span>
+    </h2>
+    {stats.signalements.map(s => (
+      <div key={s.id} style={{
+        background: '#fff', border: '1px solid #e2e8f0',
+        borderRadius: 16, padding: '20px 24px', marginBottom: 12,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+      }}>
+        <div>
+          <p style={{ color: '#0f172a', fontWeight: 700, margin: '0 0 4px', fontSize: 15 }}>
+            📍 {s.type} — Signalement #{s.id}
+          </p>
+          <p style={{ color: '#94a3b8', fontSize: 12, margin: '0 0 2px' }}>
+            {s.comment || 'Pas de commentaire'}
+          </p>
+          <p style={{ color: '#94a3b8', fontSize: 11, margin: 0 }}>
+            Par {s.user?.firstName} {s.user?.lastName} · {new Date(s.createdAt).toLocaleDateString('fr-FR')}
+          </p>
+        </div>
+        <span style={{
+          padding: '4px 12px', borderRadius: 99, fontSize: 12, fontWeight: 600,
+          background: s.status === 'RESOLVED' ? '#dcfce7' : s.status === 'IN_PROGRESS' ? '#fef9c3' : '#fef2f2',
+          color: s.status === 'RESOLVED' ? '#16a34a' : s.status === 'IN_PROGRESS' ? '#854d0e' : '#ef4444',
+        }}>
+          {s.status === 'RESOLVED' ? '✅ Résolu' : s.status === 'IN_PROGRESS' ? '🔄 En cours' : '⏳ En attente'}
+        </span>
+      </div>
+    ))}
+  </div>
+)}
       {/* Toasts missions */}
       {toasts.map((t, i) => (
         <div key={t.id} style={{ position: "fixed", bottom: 28 + i * 24, right: 28, zIndex: 99999 - i }}>
