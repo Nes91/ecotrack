@@ -443,7 +443,7 @@ function SignalementsPanel({ scrollRef }) {
               : "Inconnu";
             const email = s.user?.email || s.createdBy?.email || "";
             const lieu   = s.lieu || s.location?.address || s.adresse || "—";
-            const msg    = s.message || s.description || "—";
+            const msg = s.comment || s.message || s.description || "—";
             const date   = s.createdAt ? new Date(s.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : null;
             const key    = s._id || s.id || i;
             const isOpen = expanded === key;
