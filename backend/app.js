@@ -409,15 +409,16 @@ app.get('/signalements', authMiddleware, async (req, res) => {
       });
     } 
     // Si ADMIN ou MANAGER : voir tous les signalements
-    else if (req.userRole === 'ADMIN' || req.userRole === 'MANAGER') {
-      signalements = await prisma.report.findMany({
-        include: {
-          user: { select: { id: true, firstName: true, lastName: true, email: true } },
-          container: { select: { id: true, type: true, zone: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-      });
-    }
+else if (req.userRole === 'ADMIN' || req.userRole === 'MANAGER') {
+  signalements = await prisma.report.findMany({
+    include: {
+      user      : { select: { id: true, firstName: true, lastName: true, email: true } },
+      assignedTo: { select: { id: true, firstName: true, lastName: true } }, // ← vérifiez cette ligne
+      container : { select: { id: true, type: true, zone: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+}
     
     // Si AGENT : voir les signalements de sa zone (optionnel)
     else if (req.userRole === 'AGENT') {
