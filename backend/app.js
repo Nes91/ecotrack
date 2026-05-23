@@ -412,7 +412,7 @@ app.get('/signalements', authMiddleware, async (req, res) => {
     else if (req.userRole === 'ADMIN' || req.userRole === 'MANAGER') {
       signalements = await prisma.report.findMany({
         include: {
-          user: { select: { id: true, firstName: true, lastName: true } },
+          user: { select: { id: true, firstName: true, lastName: true, email: true } },
           container: { select: { id: true, type: true, zone: true } },
         },
         orderBy: { createdAt: 'desc' },

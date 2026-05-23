@@ -441,9 +441,10 @@ function SignalementsPanel({ scrollRef }) {
             const nom   = (s.user || s.createdBy)
               ? `${(s.user || s.createdBy).firstName || ""} ${(s.user || s.createdBy).lastName || (s.createdBy?.name) || ""}`.trim()
               : "Inconnu";
-            const email = s.user?.email || s.createdBy?.email || "";
-            const lieu   = s.lieu || s.location?.address || s.adresse || "—";
-            const msg = s.comment || s.message || s.description || "—";
+              const msg = s.comment || s.message || s.description || "—";
+            const email = s.user?.email || s.createdBy?.email || "—";
+const lieu  = s.lieu || s.location?.address || s.adresse
+  || (s.lat && s.lng ? `${parseFloat(s.lat).toFixed(4)}, ${parseFloat(s.lng).toFixed(4)}` : "—");
             const date   = s.createdAt ? new Date(s.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : null;
             const key    = s._id || s.id || i;
             const isOpen = expanded === key;
