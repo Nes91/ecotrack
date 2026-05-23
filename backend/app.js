@@ -418,12 +418,28 @@ app.get('/signalements', authMiddleware, async (req, res) => {
         orderBy: { createdAt: 'desc' },
       });
     }
+    
     // Si AGENT : voir les signalements de sa zone (optionnel)
-    else {
+    else if (req.userRole === 'AGENT') {
       signalements = await prisma.report.findMany({
+        where: { container: { zone: req.userZone } },
+        include: {
+          user: { select: { id: true, firstName: true, lastName: true } },
+          container: { select: { id: true, type: true, zone: true } },
+        },
         orderBy: { createdAt: 'desc' },
       });
     }
+
+    else {
+      signalements = await prisma.report.findMany({
+        orderBy: { createdAt: 'desc' },
+        include: {
+          user: { select: { id: true, firstName: true, lastName: true, email: true } },
+      assignedTo: { select: { id: true, firstName: true, lastName: true } },
+    },
+  });
+}
     
     res.json(signalements);
   } catch (err) {
