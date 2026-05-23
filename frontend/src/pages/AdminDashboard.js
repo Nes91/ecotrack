@@ -6,9 +6,15 @@ import socket from '../socket/socket';
 
 async function reverseGeocode(lat, lng) {
   try {
+    const latNum = parseFloat(lat);
+    const lngNum = parseFloat(lng);
+    if (isNaN(latNum) || isNaN(lngNum)) return null;
+
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lng=${lng}&format=json&accept-language=fr`
+      `https://nominatim.openstreetmap.org/reverse?lat=${latNum}&lon=${lngNum}&format=json&accept-language=fr`,
+      { headers: { "Accept-Language": "fr" } }
     );
+    if (!res.ok) return null;
     const data = await res.json();
     const a = data.address;
     return [
