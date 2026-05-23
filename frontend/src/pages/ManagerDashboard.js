@@ -9,10 +9,12 @@ const fillColor = (level) => {
 };
 
 const STATUS_CONFIG = {
-  PENDING:     { label: "En attente",  bg: "#fef9c3", border: "#eab308", text: "#854d0e",  dot: "#eab308" },
-  ASSIGNED:    { label: "Assignée",    bg: "#dbeafe", border: "#3b82f6", text: "#1e40af",  dot: "#3b82f6" },
-  IN_PROGRESS: { label: "En cours",   bg: "#ede9fe", border: "#8b5cf6", text: "#5b21b6",  dot: "#8b5cf6" },
-  COMPLETED:   { label: "Terminée",   bg: "#dcfce7", border: "#22c55e", text: "#14532d",  dot: "#22c55e" },
+  PENDING:     { label: "En attente",  bg: "#fef9c3", border: "#eab308", text: "#854d0e", dot: "#eab308" },
+  ASSIGNED:    { label: "Assignée",    bg: "#dbeafe", border: "#3b82f6", text: "#1e40af", dot: "#3b82f6" },
+  IN_PROGRESS: { label: "En cours",    bg: "#ede9fe", border: "#8b5cf6", text: "#5b21b6", dot: "#8b5cf6" },
+  COMPLETED:   { label: "Terminée",    bg: "#dcfce7", border: "#22c55e", text: "#14532d", dot: "#22c55e" },
+  RESOLVED:    { label: "Résolu",      bg: "#dcfce7", border: "#22c55e", text: "#14532d", dot: "#22c55e" }, // ← ajoutez
+  REJECTED:    { label: "Rejeté",      bg: "#fee2e2", border: "#ef4444", text: "#991b1b", dot: "#ef4444" }, // ← ajoutez aussi
 };
 
 const CAT_COLORS = {
