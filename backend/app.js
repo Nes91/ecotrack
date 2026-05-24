@@ -1088,11 +1088,19 @@ app.post('/auth/sessions/revoke-all', authMiddleware, async (req, res) => {
 // ─── COMPTE : Supprimer son compte ───────────────────────────────────────────
 app.delete('/auth/account', authMiddleware, async (req, res) => {
   try {
+    // Supprimer toutes les données liées
+    await prisma.notification.deleteMany({ where: { userId: req.userId } });
+    await prisma.mission.deleteMany({ where: { adminId: req.userId } }); // ← ajout
+    await prisma.mission.deleteMany({ where: { agentId: req.userId } }); // ← si l'agent a aussi des missions
+    await prisma.report.deleteMany({ where: { userId: req.userId } });
+    await prisma.gamification.deleteMany({ where: { userId: req.userId } });
+
     await prisma.user.delete({ where: { id: req.userId } });
+
     res.json({ message: 'Compte supprimé avec succès.' });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Erreur lors de la suppression du compte.' });
+    res.status(500).json({ error: 'Erreur lors de la suppression du compte.', details: err.message });
   }
 });
 
