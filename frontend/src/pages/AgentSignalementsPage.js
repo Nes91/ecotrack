@@ -60,7 +60,7 @@ function StatusBadge({ status }) {
 
 // ── Carte signalement ───────────────────────────────────────────────────────
 
-function SignalementCard({ s, onUpdateStatus, isUpdating, currentUser }) {
+function SignalementCard({ s, onUpdateStatus, isUpdating, currentUser, geocoded }) {
   const [expanded, setExpanded] = useState(false);
   const [hovered, setHovered] = useState(false);
   const typeCfg = TYPE_CONFIG[s.type] || TYPE_CONFIG.Autre;
@@ -134,14 +134,14 @@ function SignalementCard({ s, onUpdateStatus, isUpdating, currentUser }) {
               }}>
                 <span style={{ color: typeCfg.color }}>●</span> {s.type}
               </span>
-              {s.lieu && (
+              {(s.lieu || geocoded?.[s.id]) && (
                 <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 12, color: "#6b7280", display: "flex", alignItems: "center", gap: 3 }}>
-                  📍 {s.lieu}
+                  📍 {s.lieu || geocoded[s.id]}
                 </span>
               )}
-              {(s.lat && s.lng && !s.lieu) && (
+              {(!s.lieu && !geocoded?.[s.id] && s.lat && s.lng) && (
                 <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11, color: "#9ca3af" }}>
-                  📍 {parseFloat(s.lat).toFixed(4)}, {parseFloat(s.lng).toFixed(4)}
+                  📍 Localisation en cours…
                 </span>
               )}
             </div>
@@ -335,6 +335,35 @@ export default function AgentSignalementsPage() {
   const [mounted, setMounted] = useState(false);
   const [view, setView] = useState("all"); // "all" | "mine"
   const searchRef = useRef(null);
+  const [geocoded, setGeocoded] = useState({});
+
+  async function reverseGeocode(lat, lng) {
+  try {
+    const latNum = parseFloat(lat);
+    const lngNum = parseFloat(lng);
+    if (isNaN(latNum) || isNaN(lngNum)) return null;
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${latNum}&lon=${lngNum}&format=json&accept-language=fr`
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const a = data.address;
+    return [
+      a.road || a.pedestrian || a.path || "",
+      a.suburb || a.quarter || a.neighbourhood || "",
+      a.city || a.town || a.village || a.municipality || "",
+    ].filter(Boolean).join(", ") || data.display_name?.split(",").slice(0, 2).join(", ") || null;
+  } catch { return null; }
+}
+
+useEffect(() => {
+  const toGeocode = signalements.filter(s => !s.lieu && s.lat && s.lng);
+  toGeocode.forEach(async (s) => {
+    if (geocoded[s.id]) return;
+    const adresse = await reverseGeocode(s.lat, s.lng);
+    if (adresse) setGeocoded(prev => ({ ...prev, [s.id]: adresse }));
+  });
+}, [signalements]);
 
   useEffect(() => {
     try {
@@ -666,6 +695,7 @@ export default function AgentSignalementsPage() {
                     onUpdateStatus={handleUpdateStatus}
                     isUpdating={updatingId === s.id}
                     currentUser={currentUser}
+                    geocoded={geocoded}
                   />
                 </div>
               ))}

@@ -267,12 +267,6 @@ function HomeShell({ user, children }) {
             </h1>
             <p style={S.bannerSub}>{meta.sub}</p>
           </div>
-
-          <div style={S.statsGrid}>
-            <StatCard icon="📊" value="12" label="Activités" delay={0} />
-            <StatCard icon="✅" value="8"  label="Complétées" delay={60} />
-            <StatCard icon="⏳" value="4"  label="En cours" delay={120} />
-          </div>
         </div>
       </div>
 
@@ -398,7 +392,6 @@ const S = {
   bannerName: { fontSize: "34px", fontWeight: "800", letterSpacing: "-1px" },
   bannerSub: { margin: 0, fontSize: "15px", color: "rgba(255,255,255,0.75)", lineHeight: "1.5", maxWidth: "440px" },
   statsGrid: { display: "flex", gap: "12px", flexShrink: 0 },
-  statCard: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", width: "100px", padding: "18px 10px", borderRadius: "16px", background: "rgba(255,255,255,0.1)", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.15)", opacity: 0, animation: "fadeInUp 0.45s cubic-bezier(0.4,0,0.2,1) forwards" },
   statIcon: { fontSize: "20px", marginBottom: "6px" },
   statValue: { fontSize: "22px", fontWeight: "800", color: "#fff", lineHeight: "1", marginBottom: "4px" },
   statLabel: { fontSize: "11px", color: "rgba(255,255,255,0.7)", textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: "600", textAlign: "center" },
