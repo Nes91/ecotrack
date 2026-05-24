@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import API from "../api/api";
-import { Doughnut } from "react-chartjs-2";
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from "chart.js";
 import BadgeCard from "../components/BadgeCard";
 
@@ -34,13 +33,6 @@ export default function Gamification() {
     <div className="pt-4 space-y-6">
       <h1 className="text-3xl font-bold text-center">Gamification</h1>
       <BadgeCard points={gamification.points} level={gamification.level} badges={gamification.badges} />
-
-      <section>
-        <h2 className="text-2xl font-semibold mb-4">Vos badges</h2>
-        <div className="max-w-md mx-auto h-64">
-          <Doughnut data={gamificationData} options={{ responsive: true, maintainAspectRatio: false }} />
-        </div>
-      </section>
     </div>
   );
 }
