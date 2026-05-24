@@ -25,7 +25,7 @@ ECOTRACK est une plateforme IoT intelligente qui transforme la gestion des déch
 | Frontend | React 19, React Router, TailwindCSS, Leaflet, Socket.io |
 | Backend | Node.js, Express 5, Prisma ORM, JWT, Socket.io |
 | Base de données | PostgreSQL + PostGIS |
-| Auth | JWT + 2FA (speakeasy) |
+| Auth | JWT +  (speakeasy) |
 | Tests | Jest + Supertest (backend), React Testing Library (frontend) |
 | CI/CD | GitHub Actions + Vercel + Render |
 

@@ -164,11 +164,9 @@ app.post('/signup', async (req, res) => {
 
 app.post('/auth/login', async (req, res) => {
   const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({
-      error: 'Email et mot de passe requis'
-    });
-  }
+  if (!email || !password)
+    return res.status(400).json({ error: 'Email et mot de passe requis' });
+
   try {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) return res.status(401).json({ message: 'Email ou mot de passe invalide' });
@@ -176,13 +174,23 @@ app.post('/auth/login', async (req, res) => {
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ message: 'Email ou mot de passe invalide' });
 
-    const token = jwt.sign({ userId: user.id, role: user.role }, SECRET_KEY, { expiresIn: '7d' });
+    // ── Si 2FA activé : renvoyer un tempToken au lieu du vrai token ──────────
+    if (user.twoFactorEnabled && user.twoFactorSecret) {
+      const tempToken = jwt.sign(
+        { userId: user.id, role: user.role, type: '2fa' },
+        SECRET_KEY,
+        { expiresIn: '5m' }
+      );
+      return res.json({ requires2FA: true, tempToken });
+    }
 
+    // ── Sinon : connexion normale ─────────────────────────────────────────────
+    const token = jwt.sign({ userId: user.id, role: user.role }, SECRET_KEY, { expiresIn: '7d' });
     res.json({
-      id: user.id,
-      name: `${user.firstName} ${user.lastName}`,
-      email: user.email,
-      role: user.role,
+      id    : user.id,
+      name  : `${user.firstName} ${user.lastName}`,
+      email : user.email,
+      role  : user.role,
       token,
     });
   } catch (err) {
