@@ -1,0 +1,1483 @@
+openapi: 3.0.3
+info:
+  title: EcoTrack API
+  description: |
+    API REST de la plateforme **EcoTrack** — Gestion intelligente des déchets urbains.
+
+    ## Authentification
+    La majorité des endpoints nécessitent un token JWT passé dans le header `Authorization`.
+    ```
+    Authorization: Bearer <token>
+    ```
+    Le token est obtenu via `POST /auth/login` ou `POST /auth/register`.
+
+    ## Rôles
+    | Rôle | Description |
+    |---|---|
+    | `ADMIN` | Accès total à la plateforme |
+    | `MANAGER` | Supervision conteneurs, signalements, tournées |
+    | `AGENT` | Accès à ses tournées et missions |
+    | `CITIZEN` | Signalements citoyens, gamification |
+
+  version: 1.0.0
+  contact:
+    name: Nesrine Berra — INGETIS Master 2 Dev Web 2026
+
+servers:
+  - url: http://localhost:8000
+    description: Serveur local de développement
+  - url: https://ecotrack-api.onrender.com
+    description: Serveur de production (Render)
+
+tags:
+  - name: Auth
+    description: Inscription, connexion, profil, 2FA
+  - name: Users
+    description: Gestion des utilisateurs (Admin)
+  - name: Agents
+    description: Gestion des agents de collecte
+  - name: Containers
+    description: Gestion des conteneurs
+  - name: Signalements
+    description: Signalements citoyens (incidents, débordements…)
+  - name: Tournées
+    description: Tournées de collecte
+  - name: Routes
+    description: Routes optimisées (TSP)
+  - name: Missions
+    description: Missions assignées aux agents
+  - name: Gamification
+    description: Points, badges, niveaux, leaderboard
+  - name: Dashboard
+    description: Statistiques par rôle
+  - name: Notifications
+    description: Notifications en temps réel
+  - name: Misc
+    description: Horaires, défis, santé API
+
+# ─────────────────────────────────────────────────────────────────────────────
+# COMPONENTS
+# ─────────────────────────────────────────────────────────────────────────────
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # ── Utilisateur ──────────────────────────────────────────────────────────
+    User:
+      type: object
+      properties:
+        id:          { type: integer, example: 1 }
+        firstName:   { type: string,  example: "Nesrine" }
+        lastName:    { type: string,  example: "Berra" }
+        email:       { type: string,  format: email, example: "nesrine@example.com" }
+        role:        { $ref: '#/components/schemas/Role' }
+        phone:       { type: string,  example: "+33612345678", nullable: true }
+        address:     { type: string,  example: "12 rue de la Paix, Paris", nullable: true }
+        avatar:      { type: string,  example: "/uploads/avatar.jpg", nullable: true }
+        bio:         { type: string,  nullable: true }
+        twoFactorEnabled: { type: boolean, example: false }
+        createdAt:   { type: string,  format: date-time }
+
+    Role:
+      type: string
+      enum: [ADMIN, MANAGER, AGENT, CITIZEN]
+      example: CITIZEN
+
+    # ── Auth ─────────────────────────────────────────────────────────────────
+    AuthResponse:
+      type: object
+      properties:
+        id:    { type: integer }
+        name:  { type: string, example: "Nesrine Berra" }
+        email: { type: string, format: email }
+        role:  { $ref: '#/components/schemas/Role' }
+        token: { type: string, example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." }
+
+    # ── Conteneur ────────────────────────────────────────────────────────────
+    Container:
+      type: object
+      properties:
+        id:        { type: integer, example: 1 }
+        type:      { type: string,  example: "RECYCLABLE" }
+        capacity:  { type: number,  example: 1000 }
+        fillLevel: { type: number,  example: 75.5, description: "Niveau de remplissage en %" }
+        zone:      { type: string,  example: "Centre" }
+        latitude:  { type: number,  example: 48.8566 }
+        longitude: { type: number,  example: 2.3522 }
+
+    # ── Signalement ──────────────────────────────────────────────────────────
+    Report:
+      type: object
+      properties:
+        id:        { type: integer, example: 1 }
+        type:      { type: string,  example: "OVERFLOW", description: "Type d'incident" }
+        comment:   { type: string,  nullable: true, example: "Conteneur débordant depuis 2 jours" }
+        lat:       { type: number,  nullable: true, example: 48.8566 }
+        lng:       { type: number,  nullable: true, example: 2.3522 }
+        photoUrl:  { type: string,  nullable: true, example: "/uploads/photo123.jpg" }
+        status:
+          type: string
+          enum: [PENDING, IN_PROGRESS, RESOLVED, REJECTED]
+          example: PENDING
+        userId:    { type: integer, nullable: true }
+        createdAt: { type: string,  format: date-time }
+
+    ReportStatus:
+      type: string
+      enum: [PENDING, IN_PROGRESS, RESOLVED, REJECTED]
+
+    # ── Tournée / Route ──────────────────────────────────────────────────────
+    Route:
+      type: object
+      properties:
+        id:              { type: integer }
+        name:            { type: string,  example: "Tournée Centre 01/06" }
+        agentId:         { type: integer }
+        status:
+          type: string
+          enum: [PENDING, ASSIGNED, IN_PROGRESS, COMPLETED]
+        totalDistanceKm: { type: number,  nullable: true, example: 12.4 }
+        fillThreshold:   { type: integer, nullable: true, example: 70 }
+        containersCount: { type: integer, nullable: true, example: 8 }
+        startTime:       { type: string,  format: date-time, nullable: true }
+        endTime:         { type: string,  format: date-time, nullable: true }
+        createdAt:       { type: string,  format: date-time }
+
+    # ── Mission ──────────────────────────────────────────────────────────────
+    Mission:
+      type: object
+      properties:
+        id:          { type: integer }
+        title:       { type: string, example: "Collecte urgente zone Nord" }
+        description: { type: string, nullable: true }
+        agentId:     { type: integer }
+        adminId:     { type: integer }
+        status:
+          type: string
+          enum: [PENDING, IN_PROGRESS, DONE]
+          example: PENDING
+        createdAt: { type: string, format: date-time }
+
+    # ── Gamification ─────────────────────────────────────────────────────────
+    Gamification:
+      type: object
+      properties:
+        id:     { type: integer }
+        userId: { type: integer }
+        points: { type: integer, example: 150 }
+        level:  { type: integer, example: 2 }
+        badges:
+          type: array
+          items: { type: string }
+          example: ["first_report", "reporter_5"]
+
+    # ── Notification ─────────────────────────────────────────────────────────
+    Notification:
+      type: object
+      properties:
+        id:        { type: integer }
+        title:     { type: string, example: "Nouveau signalement" }
+        message:   { type: string }
+        userId:    { type: integer }
+        read:      { type: boolean, example: false }
+        createdAt: { type: string, format: date-time }
+
+    # ── Erreurs ──────────────────────────────────────────────────────────────
+    Error:
+      type: object
+      properties:
+        error:   { type: string, example: "Accès interdit" }
+        message: { type: string, example: "Email déjà utilisé" }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PATHS
+# ─────────────────────────────────────────────────────────────────────────────
+paths:
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # MISC
+  # ═══════════════════════════════════════════════════════════════════════════
+  /:
+    get:
+      tags: [Misc]
+      summary: Vérification que l'API tourne
+      responses:
+        '200':
+          description: API opérationnelle
+          content:
+            text/plain:
+              schema: { type: string, example: "Ecotrack API is running 🚀" }
+
+  /health:
+    get:
+      tags: [Misc]
+      summary: Health check
+      responses:
+        '200':
+          description: Statut de santé de l'API
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:  { type: string, example: "ok" }
+                  service: { type: string, example: "ecotrack-api" }
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # AUTH
+  # ═══════════════════════════════════════════════════════════════════════════
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Inscription d'un nouvel utilisateur
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                firstName: { type: string, example: "Nesrine" }
+                lastName:  { type: string, example: "Berra" }
+                name:      { type: string, example: "Nesrine Berra", description: "Alternative à firstName + lastName" }
+                email:     { type: string, format: email, example: "nesrine@example.com" }
+                password:  { type: string, format: password, example: "motdepasse123" }
+                role:      { $ref: '#/components/schemas/Role' }
+      responses:
+        '201':
+          description: Utilisateur créé avec succès
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '400':
+          description: Champs manquants ou email déjà utilisé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /signup:
+    post:
+      tags: [Auth]
+      summary: Inscription simplifiée (alias de /auth/register, rôle CITIZEN par défaut)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name:     { type: string, example: "Nesrine Berra" }
+                email:    { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        '201':
+          description: Citoyen créé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '400':
+          description: Champs manquants ou email déjà utilisé
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Connexion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:    { type: string, format: email, example: "nesrine@example.com" }
+                password: { type: string, format: password, example: "motdepasse123" }
+      responses:
+        '200':
+          description: Connexion réussie, retourne le token JWT
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '401':
+          description: Email ou mot de passe invalide
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Récupère le profil de l'utilisateur connecté (avec gamification)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Profil complet avec points/badges
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/User'
+                  - type: object
+                    properties:
+                      points: { type: integer }
+                      level:  { type: integer }
+                      badges: { type: array, items: { type: string } }
+        '401': { description: Token manquant ou invalide }
+        '404': { description: Utilisateur introuvable }
+
+  /auth/profile:
+    put:
+      tags: [Auth]
+      summary: Mise à jour du profil personnel
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                firstName: { type: string }
+                lastName:  { type: string }
+                email:     { type: string, format: email }
+                phone:     { type: string }
+                address:   { type: string }
+                bio:       { type: string }
+      responses:
+        '200':
+          description: Profil mis à jour
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { description: Email déjà utilisé }
+
+  /auth/change-password:
+    put:
+      tags: [Auth]
+      summary: Changement de mot de passe
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string, format: password }
+                newPassword:     { type: string, format: password, minLength: 8 }
+      responses:
+        '200': { description: Mot de passe modifié }
+        '400': { description: Champs manquants ou nouveau mot de passe trop court }
+        '401': { description: Mot de passe actuel incorrect }
+
+  /auth/avatar:
+    post:
+      tags: [Auth]
+      summary: Upload d'un avatar
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [avatar]
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: URL de l'avatar uploadé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  avatarUrl: { type: string, example: "/uploads/avatar123.jpg" }
+
+  /auth/2fa/setup:
+    post:
+      tags: [Auth]
+      summary: Activation du 2FA — génère un QR code TOTP
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: QR code et secret 2FA
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  qrCode: { type: string, description: "Data URL base64 du QR code" }
+                  secret: { type: string, example: "JBSWY3DPEHPK3PXP" }
+
+  /auth/2fa/disable:
+    post:
+      tags: [Auth]
+      summary: Désactivation du 2FA
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: 2FA désactivé }
+
+  /auth/2fa/verify:
+    post:
+      tags: [Auth]
+      summary: Vérification du code TOTP (échange tempToken → token final)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tempToken, token]
+              properties:
+                tempToken: { type: string, description: "Token temporaire reçu à la connexion" }
+                token:     { type: string, example: "123456", description: "Code TOTP à 6 chiffres" }
+      responses:
+        '200':
+          description: Token JWT final
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthResponse' }
+        '401': { description: Code 2FA invalide }
+
+  /auth/sessions/revoke-all:
+    post:
+      tags: [Auth]
+      summary: Révoquer toutes les sessions actives
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Sessions révoquées }
+
+  /auth/account:
+    delete:
+      tags: [Auth]
+      summary: Suppression du compte de l'utilisateur connecté
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: Compte supprimé }
+
+  /profil:
+    get:
+      tags: [Auth]
+      summary: Profil complet avec rapports, routes et gamification
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Profil étendu
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # USERS (Admin)
+  # ═══════════════════════════════════════════════════════════════════════════
+  /users:
+    get:
+      tags: [Users]
+      summary: Liste tous les utilisateurs (Admin uniquement)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Liste des utilisateurs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/User' }
+        '403': { description: Accès interdit }
+
+  /users/{id}:
+    put:
+      tags: [Users]
+      summary: Mise à jour d'un utilisateur (Admin)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                firstName: { type: string }
+                lastName:  { type: string }
+                email:     { type: string, format: email }
+                role:      { $ref: '#/components/schemas/Role' }
+                phone:     { type: string }
+                address:   { type: string }
+      responses:
+        '200': { description: Utilisateur mis à jour }
+        '404': { description: Utilisateur introuvable }
+    delete:
+      tags: [Users]
+      summary: Suppression d'un utilisateur (Admin)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Utilisateur supprimé }
+        '404': { description: Utilisateur introuvable }
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # AGENTS
+  # ═══════════════════════════════════════════════════════════════════════════
+  /agents:
+    get:
+      tags: [Agents]
+      summary: Liste des agents (Admin, Manager)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Liste des agents
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:        { type: integer }
+                    firstName: { type: string }
+                    lastName:  { type: string }
+                    email:     { type: string }
+                    role:      { $ref: '#/components/schemas/Role' }
+                    address:   { type: string, nullable: true }
+                    lat:       { type: number, nullable: true }
+                    lng:       { type: number, nullable: true }
+    post:
+      tags: [Agents]
+      summary: Créer un agent (Admin uniquement)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [firstName, lastName, role]
+              properties:
+                firstName: { type: string, example: "Mohamed" }
+                lastName:  { type: string, example: "Dupont" }
+                role:      { $ref: '#/components/schemas/Role' }
+                address:   { type: string, nullable: true }
+                latitude:  { type: number, nullable: true }
+                longitude: { type: number, nullable: true }
+      responses:
+        '201':
+          description: Agent créé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  user:    { $ref: '#/components/schemas/User' }
+
+  /agents/{id}:
+    put:
+      tags: [Agents]
+      summary: Mise à jour d'un agent (Admin)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                firstName: { type: string }
+                lastName:  { type: string }
+                role:      { $ref: '#/components/schemas/Role' }
+                address:   { type: string }
+                latitude:  { type: number }
+                longitude: { type: number }
+      responses:
+        '200': { description: Agent mis à jour }
+        '400': { description: Rôle invalide }
+    delete:
+      tags: [Agents]
+      summary: Suppression d'un agent et de ses données liées (Admin)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Agent supprimé }
+        '404': { description: Agent introuvable }
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # CONTAINERS
+  # ═══════════════════════════════════════════════════════════════════════════
+  /containers:
+    get:
+      tags: [Containers]
+      summary: Liste tous les conteneurs
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Liste des conteneurs
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Container' }
+    post:
+      tags: [Containers]
+      summary: Créer un conteneur (Admin, Manager)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type, capacity]
+              properties:
+                type:      { type: string, example: "RECYCLABLE" }
+                capacity:  { type: number, example: 1000 }
+                fillLevel: { type: number, example: 0, default: 0 }
+                zone:      { type: string, example: "Centre" }
+                latitude:  { type: number, example: 48.8566, default: 48.8566 }
+                longitude: { type: number, example: 2.3522,  default: 2.3522 }
+      responses:
+        '201':
+          description: Conteneur créé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Container' }
+
+  /containers/{id}:
+    put:
+      tags: [Containers]
+      summary: Mise à jour d'un conteneur (Admin, Manager)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:      { type: string }
+                capacity:  { type: number }
+                fillLevel: { type: number }
+                zone:      { type: string }
+                latitude:  { type: number }
+                longitude: { type: number }
+      responses:
+        '200': { description: Conteneur mis à jour }
+        '404': { description: Conteneur introuvable }
+    delete:
+      tags: [Containers]
+      summary: Suppression d'un conteneur (Admin, Manager)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Conteneur supprimé }
+        '404': { description: Conteneur introuvable }
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # SIGNALEMENTS
+  # ═══════════════════════════════════════════════════════════════════════════
+  /signalements/public:
+    get:
+      tags: [Signalements]
+      summary: Liste les signalements publics (sans authentification)
+      responses:
+        '200':
+          description: Signalements publics
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Report' }
+    post:
+      tags: [Signalements]
+      summary: Créer un signalement public (sans authentification)
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type:    { type: string, example: "OVERFLOW" }
+                comment: { type: string }
+                lat:     { type: number }
+                lng:     { type: number }
+                photo:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Signalement public créé
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Report' }
+
+  /signalements:
+    get:
+      tags: [Signalements]
+      summary: Liste les signalements (filtrés selon le rôle)
+      security: [{ bearerAuth: [] }]
+      description: |
+        - **CITIZEN** : voit uniquement ses propres signalements
+        - **ADMIN / MANAGER** : voit tous les signalements avec infos utilisateur
+        - **AGENT** : voit tous les signalements
+      responses:
+        '200':
+          description: Liste des signalements
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Report' }
+    post:
+      tags: [Signalements]
+      summary: Créer un signalement (citoyen connecté)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type:        { type: string, example: "OVERFLOW" }
+                comment:     { type: string }
+                containerId: { type: integer }
+                lat:         { type: number }
+                lng:         { type: number }
+                photo:
+                  type: string
+                  format: binary
+                  description: "Photo optionnelle (+5 points bonus)"
+      responses:
+        '201':
+          description: Signalement créé avec points de gamification
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  report: { $ref: '#/components/schemas/Report' }
+                  gamification:
+                    type: object
+                    properties:
+                      pointsEarned: { type: integer, example: 15 }
+                      totalPoints:  { type: integer, example: 165 }
+                      level:        { type: integer, example: 2 }
+                      newBadges:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id:   { type: string }
+                            name: { type: string }
+
+  /signalements/citoyen:
+    get:
+      tags: [Signalements]
+      summary: Signalements du citoyen connecté (CITIZEN uniquement)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Signalements du citoyen
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Report' }
+
+  /signalements/{id}:
+    put:
+      tags: [Signalements]
+      summary: Modifier un signalement
+      security: [{ bearerAuth: [] }]
+      description: Un CITIZEN ne peut modifier que ses propres signalements.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                type:    { type: string }
+                comment: { type: string }
+                lat:     { type: number }
+                lng:     { type: number }
+                status:  { $ref: '#/components/schemas/ReportStatus' }
+                photo:   { type: string, format: binary }
+      responses:
+        '200': { description: Signalement mis à jour }
+        '403': { description: Non autorisé }
+        '404': { description: Signalement introuvable }
+
+  /signalements/{id}/status:
+    patch:
+      tags: [Signalements]
+      summary: Mise à jour du statut d'un signalement (Admin, Manager)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/ReportStatus' }
+      responses:
+        '200': { description: Statut mis à jour }
+        '400': { description: Statut invalide }
+
+  /signalements/{id}/assigner:
+    put:
+      tags: [Signalements]
+      summary: Assigner un signalement à un agent (Admin, Manager)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agentId]
+              properties:
+                agentId: { type: integer }
+      responses:
+        '200': { description: Signalement assigné, statut IN_PROGRESS }
+        '400': { description: agentId manquant }
+
+  /signalements/{id}/message:
+    post:
+      tags: [Signalements]
+      summary: Envoyer un message temps réel au citoyen via Socket.io (Admin, Manager)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string, example: "Votre signalement est en cours de traitement." }
+      responses:
+        '200':
+          description: Message envoyé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  online:  { type: boolean, description: "true si le citoyen est connecté en temps réel" }
+
+  /signalements/{id}/notifier-citoyen:
+    post:
+      tags: [Signalements]
+      summary: Notifier un citoyen par Socket.io (Admin, Manager)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:   { type: string }
+                citizenId: { type: integer }
+      responses:
+        '200': { description: Notification envoyée }
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # TOURNÉES
+  # ═══════════════════════════════════════════════════════════════════════════
+  /tournees:
+    get:
+      tags: [Tournées]
+      summary: Liste des tournées (Admin, Manager, Agent)
+      security: [{ bearerAuth: [] }]
+      description: Un AGENT voit uniquement ses propres tournées.
+      responses:
+        '200':
+          description: Liste des tournées
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Route' }
+    post:
+      tags: [Tournées]
+      summary: Créer une tournée (Admin, Manager)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agentId]
+              properties:
+                agentId:   { type: integer, example: 3 }
+                name:      { type: string,  example: "Tournée Centre 01/06" }
+                startTime: { type: string,  format: date-time }
+                endTime:   { type: string,  format: date-time }
+      responses:
+        '201':
+          description: Tournée créée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Route' }
+
+  /tournees/{id}:
+    put:
+      tags: [Tournées]
+      summary: Modifier une tournée (Admin, Manager)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                agentId:   { type: integer }
+                name:      { type: string }
+                startTime: { type: string, format: date-time }
+                endTime:   { type: string, format: date-time }
+      responses:
+        '200': { description: Tournée mise à jour }
+    delete:
+      tags: [Tournées]
+      summary: Supprimer une tournée (Admin, Manager)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Tournée supprimée }
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # ROUTES (optimisées)
+  # ═══════════════════════════════════════════════════════════════════════════
+  /routes:
+    get:
+      tags: [Routes]
+      summary: Liste des routes optimisées (Admin, Manager, Agent)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, ASSIGNED, IN_PROGRESS, COMPLETED]
+      responses:
+        '200':
+          description: Liste des routes avec étapes et agent
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Route' }
+
+  /routes/optimize:
+    post:
+      tags: [Routes]
+      summary: Générer et optimiser une tournée TSP (Admin, Manager)
+      security: [{ bearerAuth: [] }]
+      description: |
+        Utilise un algorithme TSP + 2-opt pour calculer l'ordre optimal de collecte
+        des conteneurs dont le niveau de remplissage dépasse le seuil donné.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [depot, agentId]
+              properties:
+                depot:
+                  type: object
+                  required: [lat, lng]
+                  properties:
+                    lat: { type: number, example: 48.8566 }
+                    lng: { type: number, example: 2.3522 }
+                fillThreshold: { type: integer, default: 70, example: 70, description: "Seuil de remplissage minimum (%)" }
+                agentId:       { type: integer, example: 3 }
+                name:          { type: string,  example: "Tournée optimisée 01/06" }
+      responses:
+        '201':
+          description: Route créée et optimisée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Route' }
+        '200':
+          description: Aucun conteneur au-dessus du seuil
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:        { type: string }
+                  route:          { nullable: true, type: object }
+                  containersCount: { type: integer, example: 0 }
+
+  /routes/{id}:
+    put:
+      tags: [Routes]
+      summary: Modifier une route (Admin, Manager)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:      { type: string }
+                agentId:   { type: integer }
+                status:    { type: string }
+                startTime: { type: string, format: date-time }
+                endTime:   { type: string, format: date-time }
+      responses:
+        '200': { description: Route mise à jour }
+        '404': { description: Tournée introuvable }
+    patch:
+      tags: [Routes]
+      summary: Mettre à jour le statut d'une route
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, example: "IN_PROGRESS" }
+      responses:
+        '200': { description: Statut mis à jour }
+    delete:
+      tags: [Routes]
+      summary: Supprimer une route (Admin, Manager)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Tournée supprimée }
+
+  /routes/{tourId}/stops/{stopId}/collect:
+    patch:
+      tags: [Routes]
+      summary: Valider la collecte d'une étape (Agent, Admin, Manager)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: tourId
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: stopId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Étape marquée comme collectée. Si toutes les étapes sont faites, la tournée passe à COMPLETED.
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # MISSIONS
+  # ═══════════════════════════════════════════════════════════════════════════
+  /missions:
+    get:
+      tags: [Missions]
+      summary: Liste toutes les missions (Admin, Manager)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Liste des missions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Mission' }
+    post:
+      tags: [Missions]
+      summary: Créer une mission
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, agentId]
+              properties:
+                title:       { type: string, example: "Collecte urgente zone Est" }
+                description: { type: string }
+                agentId:     { type: integer, example: 3 }
+      responses:
+        '201':
+          description: Mission créée
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Mission' }
+
+  /missions/mes-missions:
+    get:
+      tags: [Missions]
+      summary: Missions de l'agent connecté
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Missions de l'agent
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Mission' }
+
+  /missions/{id}:
+    put:
+      tags: [Missions]
+      summary: Modifier une mission (Admin, Manager)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:       { type: string }
+                description: { type: string }
+                agentId:     { type: integer }
+                status:      { type: string, enum: [PENDING, IN_PROGRESS, DONE] }
+      responses:
+        '200': { description: Mission mise à jour }
+        '404': { description: Mission introuvable }
+    delete:
+      tags: [Missions]
+      summary: Supprimer une mission (Admin, Manager)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Mission supprimée }
+        '404': { description: Mission introuvable }
+
+  /missions/{id}/status:
+    patch:
+      tags: [Missions]
+      summary: Mettre à jour le statut d'une mission
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [PENDING, IN_PROGRESS, DONE] }
+      responses:
+        '200': { description: Statut mis à jour }
+        '400': { description: Statut invalide }
+
+  /missions/{id}/terminer:
+    put:
+      tags: [Missions]
+      summary: Terminer une mission (Agent uniquement)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Mission passée à DONE }
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # GAMIFICATION
+  # ═══════════════════════════════════════════════════════════════════════════
+  /gamification:
+    get:
+      tags: [Gamification]
+      summary: Récupère la gamification de l'utilisateur connecté
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Points, niveau et badges
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Gamification' }
+
+  /leaderboard:
+    get:
+      tags: [Gamification]
+      summary: Classement des 20 meilleurs citoyens par points
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Leaderboard
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    rank:   { type: integer, example: 1 }
+                    userId: { type: integer }
+                    name:   { type: string }
+                    avatar: { type: string, nullable: true }
+                    role:   { $ref: '#/components/schemas/Role' }
+                    points: { type: integer }
+                    level:  { type: integer }
+                    badges: { type: array, items: { type: string } }
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # DASHBOARD
+  # ═══════════════════════════════════════════════════════════════════════════
+  /dashboard/admin:
+    get:
+      tags: [Dashboard]
+      summary: Statistiques admin (Admin uniquement)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Succès
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agents:               { type: integer }
+                  containers:           { type: integer }
+                  tournees:             { type: integer }
+                  signalements:         { type: integer }
+                  signalements_pending: { type: integer }
+
+  /dashboard/manager:
+    get:
+      tags: [Dashboard]
+      summary: Statistiques manager (Manager, Admin)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Succès
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  containers:         { type: integer }
+                  containersCritical: { type: integer, description: "Conteneurs ≥ 90%" }
+                  containersWarning:  { type: integer, description: "Conteneurs entre 70% et 90%" }
+                  signalementsPending: { type: integer }
+                  routesActive:       { type: integer }
+                  agents:             { type: integer }
+                  containersData:
+                    type: array
+                    items: { $ref: '#/components/schemas/Container' }
+
+  /dashboard/agent:
+    get:
+      tags: [Dashboard]
+      summary: Statistiques agent (Agent uniquement)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Succès
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nbTournees:   { type: integer }
+                  nbContainers: { type: integer }
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # NOTIFICATIONS
+  # ═══════════════════════════════════════════════════════════════════════════
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: Notifications non lues de l'utilisateur connecté
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Liste des notifications
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Notification' }
+
+  /notifications/{id}/read:
+    patch:
+      tags: [Notifications]
+      summary: Marquer une notification comme lue
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Succès
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  # MISC — Horaires & Défis
+  # ═══════════════════════════════════════════════════════════════════════════
+  /horaires:
+    get:
+      tags: [Misc]
+      summary: Horaires de collecte par jour et par zone (public)
+      responses:
+        '200':
+          description: Planning hebdomadaire
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    jour:    { type: string, example: "Lundi" }
+                    zones:   { type: array, items: { type: string }, example: ["Centre", "Nord"] }
+                    horaire: { type: string, example: "07h00 - 12h00" }
+
+  /defis:
+    get:
+      tags: [Misc]
+      summary: Liste des défis actifs
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Défis disponibles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:              { type: integer }
+                    titre:           { type: string }
+                    description:     { type: string }
+                    pointsRecompense: { type: integer }
+                    dateDebut:       { type: string, format: date }
+                    dateFin:         { type: string, format: date }
+                    statut:          { type: string, example: "ACTIF" }
+                    participants:    { type: integer }
+
+  /defis/{id}/inscrire:
+    post:
+      tags: [Misc]
+      summary: S'inscrire à un défi (+5 points)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Succès
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string, example: "Inscription au défi réussie ! +5 points" }
+                  defiId:  { type: string }

@@ -1,179 +1,382 @@
-// backend/app.js
-// ⚠️ CE FICHIER est nécessaire pour que Jest/Supertest fonctionne.
-// Il exporte l'app Express SANS appeler app.listen().
-// Le vrai démarrage reste dans server.js.
-
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client'; 
 import multer from 'multer';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import speakeasy from 'speakeasy';
-import QRCode from 'qrcode';
-
-
-import { createUserSchema, updateUserSchema } from './validator/userValidator.js';
-import { createContainerSchema, updateContainerSchema } from './validator/containerValidator.js';
-import { createReportSchema } from './validator/reportValidator.js';
-import { createRouteSchema } from './validator/routeValidator.js';
-import { optimizeRoute } from './services/routeOptimizer.js';
+import { connectedUsers, getIo } from './socket.js';
 
 const app = express();
-// Autoriser uniquement ton front Vercel
-// fichier serveur, par ex. index.js ou app.js
-const cors = require('cors');
-
-const allowedOrigins = ['https://ecotrack-five.vercel.app', 'http://localhost:3000'];
-
-app.use(cors({
-  origin: 'https://ecotrack-five.vercel.app', // ton front
-  methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true
-}));
-export const prisma = new PrismaClient();
+const prisma = new PrismaClient();
+// Ping Supabase toutes les 4 minutes pour éviter la mise en pause
+setInterval(async () => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+  } catch (e) {
+    console.log('Ping DB failed:', e.message);
+  }
+}, 4 * 60 * 1000);
 const SECRET_KEY = process.env.SECRET_KEY || 'secret';
-const VALID_ROLES = ['ADMIN', 'MANAGER', 'AGENT', 'CITIZEN'];
 
+// Configuration multer
 const upload = multer({ dest: 'uploads/' });
 
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true,
+  origin: ['http://localhost:3000', 'https://ecotrack-five.vercel.app'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 app.use(express.json());
-app.use('/uploads', express.static('uploads'));
 
-// ─── Middlewares ────────────────────────────────────────────────────────────
+// ─── SWAGGER / OpenAPI ────────────────────────────────────────────────────────
+import swaggerUi from 'swagger-ui-express';
+import { readFileSync } from 'fs';
+import { load as yamlLoad } from 'js-yaml';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = dirname(__filename);
+
+const swaggerSpec = yamlLoad(
+  readFileSync(join(__dirname, 'openapi.yaml'), 'utf8')
+);
+
+app.use(
+  '/api-docs',
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, {
+    customSiteTitle: 'EcoTrack — Documentation API',
+    customCss: `
+      .swagger-ui .topbar { background: #0f5c40; }
+      .swagger-ui .topbar-wrapper .link span { display: none; }
+      .swagger-ui .topbar-wrapper::before {
+        content: '🌿 EcoTrack API';
+        color: white;
+        font-size: 1.1rem;
+        font-weight: 700;
+        padding: 0 16px;
+      }
+    `,
+    swaggerOptions: {
+      docExpansion: 'list',
+      filter: true,
+      displayRequestDuration: true,
+      tryItOutEnabled: true,
+    },
+  })
+);
+// ─────────────────────────────────────────────────────────────────────────────
+
+app.use('/uploads', express.static('uploads'));
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', service: 'ecotrack-api' });
+});
+ // Servir les fichiers uploadés
+
+// ===== Rôles autorisés =====
+const VALID_ROLES = ['ADMIN', 'MANAGER', 'AGENT', 'CITIZEN'];
+
+// ===== Middleware : vérifie le token =====
 const authMiddleware = (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader) return res.status(401).json({ error: 'Token manquant' });
 
-  const parts = authHeader.split(' ');
-  if (parts.length !== 2 || parts[0] !== 'Bearer')
-    return res.status(401).json({ error: 'Format de token invalide' });
-
+  const token = authHeader.split(' ')[1];
   try {
-    const payload = jwt.verify(parts[1], SECRET_KEY);
-    req.user = payload;
+    const payload = jwt.verify(token, SECRET_KEY);
     req.userId = payload.userId;
     req.userRole = payload.role;
     next();
   } catch {
-    return res.status(401).json({ error: 'Token invalide ou expiré' });
+    res.status(401).json({ error: 'Token invalide' });
   }
 };
 
+// ===== Middleware : vérifie le rôle =====
 const authorize = (roles) => (req, res, next) => {
-  if (!req.userRole || !roles.includes(req.userRole))
+  if (!roles.includes(req.userRole)) {
     return res.status(403).json({ error: 'Accès interdit' });
+  }
   next();
 };
 
-const validate = (schema) => (req, res, next) => {
-  const { error } = schema.validate(req.body, { abortEarly: false });
-  if (error)
-    return res.status(400).json({ message: 'Validation échouée', details: error.details.map(d => d.message) });
-  next();
-};
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTH
+// ─────────────────────────────────────────────────────────────────────────────
+app.post('/auth/register', async (req, res) => {
+  console.log('📝 REGISTER body reçu:', JSON.stringify(req.body));
+  const { name, firstName, lastName, email, password, role } = req.body;
 
-// ─── Health check (pour les tests CI) ───────────────────────────────────────
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', service: 'ecotrack-api' });
-});
+  if (!email || !password)
+    return res.status(400).json({ message: 'Tous les champs sont obligatoires' });
 
-// ─── Auth ────────────────────────────────────────────────────────────────────
-app.post('/auth/register', validate(createUserSchema), async (req, res) => {
-  const { firstName, lastName, email, password } = req.body;
+  // ✅ Accepte firstName/lastName séparés OU name combiné
+  const first = firstName || (name ? name.split(' ')[0] : '');
+  const last  = lastName  || (name ? name.split(' ').slice(1).join(' ') : '');
+
+  if (!first)
+    return res.status(400).json({ message: 'Le prénom est obligatoire' });
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
       data: {
-        firstName, lastName, email,
-        password: hashedPassword,
-        role: 'CITIZEN',
-        gamifications: { create: { points: 0, level: 1, badges: [] } },
+        firstName: first,
+        lastName:  last,
+        email,
+        password:  hashedPassword,
+        role:      role || 'CITIZEN',
+        gamifications: {
+          create: { points: 0, level: 1, badges: [] }
+        }
       },
+      include: { gamifications: true }
     });
-    const token = jwt.sign({ userId: user.id, role: user.role }, SECRET_KEY, { expiresIn: '7d' });
-    res.status(201).json({ token, role: user.role, id: user.id, name: `${user.firstName} ${user.lastName}` });
+
+    const token = jwt.sign(
+      { userId: user.id, role: user.role },
+      SECRET_KEY,
+      { expiresIn: '7d' }
+    );
+
+    res.status(201).json({
+      id:    user.id,
+      name:  `${user.firstName} ${user.lastName}`,
+      email: user.email,
+      role:  user.role,
+      token,
+    });
   } catch (err) {
-    res.status(400).json({ error: 'Email déjà utilisé ou erreur de création' });
+    console.error(err);
+    res.status(400).json({ message: 'Email déjà utilisé ou erreur de création' });
+  }
+});
+
+// Après votre route /auth/register existante (ligne ~48)
+
+// Route alternative pour l'inscription (alias de /auth/register)
+app.post('/signup', async (req, res) => {
+  const { name, email, password } = req.body;
+
+  if (!name || !email || !password)
+    return res.status(400).json({ message: 'Tous les champs sont obligatoires' });
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  try {
+    const user = await prisma.user.create({
+      data: { 
+        firstName: name.split(' ')[0] || name,
+        lastName: name.split(' ')[1] || '',
+        email, 
+        password: hashedPassword, 
+        role: 'CITIZEN',
+        gamifications: {  // 👈 Créer automatiquement la gamification
+          create: {
+            points: 0,
+            level: 1,
+            badges: []
+          }
+        }
+      },
+      include: {
+        gamifications: true
+      }
+    });
+
+    const token = jwt.sign({ userId: user.id, role: user.role }, SECRET_KEY, { expiresIn: '7d' });
+
+    res.status(201).json({
+      id: user.id,
+      name: `${user.firstName} ${user.lastName}`,
+      email: user.email,
+      role: user.role,
+      token,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ message: 'Email déjà utilisé ou erreur de création' });
   }
 });
 
 app.post('/auth/login', async (req, res) => {
   const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'Email et mot de passe requis' });
+  if (!email || !password) {
+    return res.status(400).json({
+      error: 'Email et mot de passe requis'
+    });
+  }
   try {
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return res.status(401).json({ error: 'Email ou mot de passe invalide' });
+    if (!user) return res.status(401).json({ message: 'Email ou mot de passe invalide' });
+
     const valid = await bcrypt.compare(password, user.password);
-    if (!valid) return res.status(401).json({ error: 'Email ou mot de passe invalide' });
-    if (user.twoFactorEnabled) {
-      const tempToken = jwt.sign({ userId: user.id, type: '2fa' }, SECRET_KEY, { expiresIn: '15m' });
-      return res.json({ requires2FA: true, tempToken });
-    }
+    if (!valid) return res.status(401).json({ message: 'Email ou mot de passe invalide' });
+
     const token = jwt.sign({ userId: user.id, role: user.role }, SECRET_KEY, { expiresIn: '7d' });
-    res.json({ token, role: user.role, id: user.id, name: `${user.firstName} ${user.lastName}` });
-  } catch (err) {
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
 
-app.get('/auth/me', authMiddleware, async (req, res) => {
-  try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.userId },
-      select: {
-        id: true, firstName: true, lastName: true, email: true,
-        role: true, createdAt: true,
-        gamifications: { select: { points: true, level: true, badges: true } },
-      },
+    res.json({
+      id: user.id,
+      name: `${user.firstName} ${user.lastName}`,
+      email: user.email,
+      role: user.role,
+      token,
     });
-    if (!user) return res.status(404).json({ error: 'Utilisateur introuvable' });
-    const gamification = user.gamifications?.[0] || { points: 0, level: 1, badges: [] };
-    res.json({ ...user, points: gamification.points, level: gamification.level, badges: gamification.badges });
-  } catch {
-    res.status(500).json({ error: 'Erreur serveur' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Erreur lors de la connexion' });
   }
 });
 
-app.put('/auth/change-password', authMiddleware, async (req, res) => {
-  const { currentPassword, newPassword } = req.body;
-  if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Deux mots de passe requis' });
-  if (newPassword.length < 8) return res.status(400).json({ error: 'Au moins 8 caractères requis' });
+// ─────────────────────────────────────────────────────────────────────────────
+// PROFIL
+// ─────────────────────────────────────────────────────────────────────────────
+app.get('/profil', authMiddleware, async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({ where: { id: req.userId } });
-    if (!user) return res.status(404).json({ error: 'Utilisateur introuvable' });
-    const valid = await bcrypt.compare(currentPassword, user.password);
-    if (!valid) return res.status(401).json({ error: 'Mot de passe actuel incorrect' });
-    const hashed = await bcrypt.hash(newPassword, 10);
-    await prisma.user.update({ where: { id: req.userId }, data: { password: hashed } });
-    res.json({ message: 'Mot de passe modifié avec succès' });
-  } catch {
+    const profil = await prisma.user.findUnique({
+      where: { id: req.userId },
+      include: { reports: true, routes: true, gamifications: true },
+    });
+    res.json(profil);
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur récupération profil' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AGENTS
+// ─────────────────────────────────────────────────────────────────────────────
+app.get('/agents', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+  try {
+    const agents = await prisma.user.findMany({
+      where: { role: 'AGENT' },
+      select: { id: true, firstName: true, lastName: true, email: true, role: true, address: true, lat: true, lng: true },
+    });
+    res.json(agents);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur récupération agents' });
+  }
+});
+
+app.post('/agents', authMiddleware, authorize(['ADMIN']), async (req, res) => {
+  const { firstName, lastName, role, address, latitude, longitude } = req.body;
+
+  if (!firstName || !lastName || !role)
+    return res.status(400).json({ error: 'Prénom, nom et rôle sont obligatoires' });
+
+  if (!VALID_ROLES.includes(role))
+    return res.status(400).json({ error: 'Rôle invalide' });
+
+  try {
+    const tempEmail = `agent_${Date.now()}_${Math.random().toString(36).slice(2)}@temp.local`;
+    const tempPassword = await bcrypt.hash('changeme', 10);
+
+    const newUser = await prisma.user.create({
+      data: {
+        firstName,
+        lastName,
+        email: tempEmail,
+        password: tempPassword,
+        role,
+        address: address || null,
+        lat: latitude ? parseFloat(latitude) : null,
+        lng: longitude ? parseFloat(longitude) : null,
+        gamifications: {
+          create: {
+            points: 0,
+            level: 1,
+            badges: []
+          }
+        }
+      },
+      include: {
+        gamifications: true
+      }
+    });
+
+    const { password: _, ...safe } = newUser;
+    res.status(201).json({
+      message: 'Agent créé',
+      user: safe,
+    });
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-// ─── Containers ──────────────────────────────────────────────────────────────
+app.put('/agents/:id', authMiddleware, authorize(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  const { firstName, lastName, role, address, latitude, longitude } = req.body;
+
+  if (role && !VALID_ROLES.includes(role))
+    return res.status(400).json({ error: `Rôle invalide. Autorisés : ${VALID_ROLES.join(', ')}` });
+
+  try {
+    const updateData = {};
+    if (firstName) updateData.firstName = firstName;
+    if (lastName) updateData.lastName = lastName;
+    if (role) updateData.role = role;
+    if (address) updateData.address = address;
+    if (latitude) updateData.lat = parseFloat(latitude);
+    if (longitude) updateData.lng = parseFloat(longitude);
+
+    const updatedAgent = await prisma.user.update({
+      where: { id: parseInt(id) },
+      data: updateData,
+    });
+    const { password: _, ...safe } = updatedAgent;
+    res.json(safe);
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: 'Erreur lors de la mise à jour' });
+  }
+});
+
+app.delete('/agents/:id', authMiddleware, authorize(['ADMIN']), async (req, res) => {
+  const id = parseInt(req.params.id);
+  try {
+    // Supprimer les données liées avant de supprimer l'utilisateur
+    await prisma.gamification.deleteMany({ where: { userId: id } });
+    await prisma.mission.deleteMany({ where: { agentId: id } });
+    await prisma.route.deleteMany({ where: { agentId: id } });
+    await prisma.report.deleteMany({ where: { userId: id } });
+    
+    // Supprimer l'utilisateur
+    await prisma.user.delete({ where: { id } });
+    res.json({ message: 'Agent supprimé avec succès.' });
+  } catch (err) {
+    console.error(err);
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Agent introuvable.' });
+    res.status(500).json({ error: 'Erreur suppression agent.', details: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CONTAINERS
+// ─────────────────────────────────────────────────────────────────────────────
 app.get('/containers', authMiddleware, async (req, res) => {
   try {
     const containers = await prisma.container.findMany();
     res.json(containers);
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Erreur récupération containers' });
   }
 });
 
-app.post('/containers', authMiddleware, authorize(['ADMIN', 'MANAGER']), validate(createContainerSchema), async (req, res) => {
+app.post('/containers', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
   const { type, capacity, fillLevel, zone, latitude, longitude } = req.body;
   try {
     const container = await prisma.container.create({
       data: {
-        type, capacity: parseFloat(capacity),
+        type,
+        capacity: parseFloat(capacity),
         fillLevel: parseFloat(fillLevel || 0),
         zone,
         latitude: parseFloat(latitude || 48.8566),
@@ -181,12 +384,1011 @@ app.post('/containers', authMiddleware, authorize(['ADMIN', 'MANAGER']), validat
       },
     });
     res.status(201).json(container);
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Erreur création container' });
   }
 });
 
-app.put('/containers/:id', authMiddleware, authorize(['ADMIN', 'MANAGER']), validate(updateContainerSchema), async (req, res) => {
+// ─────────────────────────────────────────────────────────────────────────────
+// SIGNALEMENTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Route publique (sans authentification)
+app.get('/signalements/public', async (req, res) => {
+  try {
+    const signalements = await prisma.report.findMany({
+      where: { userId: null },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(signalements);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur récupération signalements publics' });
+  }
+});
+
+// Signalement public (sans authentification)
+app.post('/signalements/public', upload.single('photo'), async (req, res) => {
+  const { type, comment, lat, lng } = req.body;
+  try {
+    const report = await prisma.report.create({
+      data: {
+        type,
+        comment,
+        lat: lat ? parseFloat(lat) : null,
+        lng: lng ? parseFloat(lng) : null,
+        photoUrl: req.file ? `/uploads/${req.file.filename}` : null,
+        userId: null,
+        status: 'PENDING'
+      }
+    });
+    res.status(201).json(report);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur création signalement public' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SIGNALEMENTS - LECTURE
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Admins et Managers : voir tous les signalements
+app.get('/signalements', authMiddleware, async (req, res) => {
+  try {
+    let signalements;
+    
+    // Si CITIZEN : voir uniquement ses propres signalements
+    if (req.userRole === 'CITIZEN') {
+      signalements = await prisma.report.findMany({
+        where: { userId: req.userId },
+        include: {
+          container: { select: { id: true, type: true, zone: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    } 
+    // Si ADMIN ou MANAGER : voir tous les signalements
+    else if (req.userRole === 'ADMIN' || req.userRole === 'MANAGER') {
+      signalements = await prisma.report.findMany({
+        include: {
+          user: { select: { id: true, firstName: true, lastName: true } },
+          container: { select: { id: true, type: true, zone: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+    // Si AGENT : voir les signalements de sa zone (optionnel)
+    else {
+      signalements = await prisma.report.findMany({
+        orderBy: { createdAt: 'desc' },
+      });
+    }
+    
+    res.json(signalements);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur récupération signalements' });
+  }
+});
+
+// Route spécifique citoyens (peut être supprimée si vous utilisez la route ci-dessus)
+// app.get('/signalements/citoyen', authMiddleware, authorize(['CITIZEN']), async (req, res) => {
+//   ... (cette route devient obsolète)
+// });
+
+// Citoyens : voir uniquement leurs propres signalements
+app.get('/signalements/citoyen', authMiddleware, authorize(['CITIZEN']), async (req, res) => {
+  try {
+    const signalements = await prisma.report.findMany({
+      where: { userId: req.userId },
+      include: {
+        container: { select: { id: true, type: true, zone: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(signalements);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur récupération signalements' });
+  }
+});
+
+// Création d'un signalement (citoyen connecté)
+app.post('/signalements', authMiddleware, upload.single('photo'), async (req, res) => {
+  console.log("📝 Création signalement - Body:", req.body);
+  console.log("📝 User ID:", req.userId);
+
+  const { type, comment, containerId, lat, lng } = req.body;
+
+  if (!type) {
+    return res.status(400).json({ error: 'Le type est obligatoire' });
+  }
+
+  try {
+    // 1. Créer le signalement
+    const report = await prisma.report.create({
+      data: {
+        type: type,
+        comment: comment || null,
+        lat: lat ? parseFloat(lat) : null,
+        lng: lng ? parseFloat(lng) : null,
+        photoUrl: req.file ? `/uploads/${req.file.filename}` : null,
+        user: { connect: { id: req.userId } },
+        ...(containerId && { container: { connect: { id: parseInt(containerId) } } })
+      }
+    });
+
+    console.log("✅ Signalement créé:", report);
+
+// 🔔 Notifications managers
+const managers = await prisma.user.findMany({
+  where: {
+    role: 'MANAGER'
+  }
+});
+
+for (const manager of managers) {
+  await prisma.notification.create({
+    data: {
+      title: 'Nouveau signalement',
+      message: `Un nouveau signalement de type ${report.type} a été créé`,
+      userId: manager.id,
+    },
+  });
+}
+    // 2. Ajouter des points de gamification
+    const POINTS_PER_REPORT = 10; // Points pour un signalement
+    const BONUS_WITH_PHOTO = 5;   // Bonus si photo
+    
+    let pointsToAdd = POINTS_PER_REPORT;
+    if (req.file) {
+      pointsToAdd += BONUS_WITH_PHOTO;
+    }
+
+    try {
+      // Chercher la gamification de l'utilisateur
+      let gamification = await prisma.gamification.findFirst({
+        where: { userId: req.userId }
+      });
+
+      if (!gamification) {
+        // Créer si elle n'existe pas
+        gamification = await prisma.gamification.create({
+          data: {
+            userId: req.userId,
+            points: pointsToAdd,
+            level: 1,
+            badges: []
+          }
+        });
+        console.log(`🎮 Gamification créée avec ${pointsToAdd} points`);
+      } else {
+        // Mettre à jour les points
+        const newPoints = gamification.points + pointsToAdd;
+        const newLevel = Math.floor(newPoints / 100) + 1; // Niveau = points / 100
+
+        gamification = await prisma.gamification.update({
+          where: { id: gamification.id },
+          data: {
+            points: newPoints,
+            level: newLevel
+          }
+        });
+        console.log(`🎮 Points ajoutés: +${pointsToAdd} (Total: ${newPoints}, Niveau: ${newLevel})`);
+      }
+
+      // Vérifier et attribuer des badges
+      const badges = await checkAndAwardBadges(gamification, req.userId);
+      
+      res.status(201).json({
+        report,
+        gamification: {
+          pointsEarned: pointsToAdd,
+          totalPoints: gamification.points,
+          level: gamification.level,
+          newBadges: badges
+        }
+      });
+
+    } catch (gamError) {
+      console.error("⚠️ Erreur gamification:", gamError);
+      // On envoie quand même le signalement même si la gamification échoue
+      res.status(201).json({ report });
+    }
+
+  } catch (err) {
+    console.error("❌ Erreur Prisma:", err.message);
+    res.status(500).json({ error: 'Erreur création signalement', details: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FONCTION : Vérifier et attribuer des badges
+// ─────────────────────────────────────────────────────────────────────────────
+async function checkAndAwardBadges(gamification, userId) {
+  const newBadges = [];
+  const currentBadges = gamification.badges || [];
+
+  // Compter le nombre de signalements de l'utilisateur
+  const reportCount = await prisma.report.count({
+    where: { userId: userId }
+  });
+
+  // Définir les badges possibles
+  const BADGES = [
+    { id: "first_report", name: "Premier Signalement 🌟", condition: reportCount >= 1 },
+    { id: "reporter_5", name: "Citoyen Actif 🔥", condition: reportCount >= 5 },
+    { id: "reporter_10", name: "Super Citoyen 🏆", condition: reportCount >= 10 },
+    { id: "reporter_25", name: "Héros Urbain 🦸", condition: reportCount >= 25 },
+    { id: "level_5", name: "Niveau 5 Atteint ⭐", condition: gamification.level >= 5 },
+    { id: "level_10", name: "Niveau 10 Atteint 💎", condition: gamification.level >= 10 },
+    { id: "points_100", name: "100 Points 🎯", condition: gamification.points >= 100 },
+    { id: "points_500", name: "500 Points 🚀", condition: gamification.points >= 500 },
+  ];
+
+  // Vérifier chaque badge
+  for (const badge of BADGES) {
+    if (badge.condition && !currentBadges.includes(badge.id)) {
+      currentBadges.push(badge.id);
+      newBadges.push(badge);
+    }
+  }
+
+  // Mettre à jour si de nouveaux badges
+  if (newBadges.length > 0) {
+    await prisma.gamification.update({
+      where: { id: gamification.id },
+      data: { badges: currentBadges }
+    });
+    console.log(`🏅 Nouveaux badges attribués:`, newBadges.map(b => b.name));
+  }
+
+  return newBadges;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SIGNALEMENTS - MODIFICATION
+// ─────────────────────────────────────────────────────────────────────────────
+app.put('/signalements/:id', authMiddleware, upload.single('photo'), async (req, res) => {
+  const { id } = req.params;
+  const { type, comment, lat, lng, status } = req.body; // ← on ajoute "status"
+ 
+  console.log("🔧 Modification signalement ID:", id);
+  console.log("🔧 Données reçues:", { type, comment, lat, lng, status });
+ 
+  try {
+    const existingReport = await prisma.report.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true } },
+      },
+    });
+ 
+    if (!existingReport) {
+      return res.status(404).json({ error: 'Signalement non trouvé' });
+    }
+ 
+    if (req.userRole === 'CITIZEN' && existingReport.userId !== req.userId) {
+      return res.status(403).json({ error: 'Non autorisé à modifier ce signalement' });
+    }
+ 
+    const updateData = {};
+    if (type)              updateData.type    = type;
+    if (comment !== undefined) updateData.comment = comment;
+    if (lat)               updateData.lat     = parseFloat(lat);
+    if (lng)               updateData.lng     = parseFloat(lng);
+    if (status)            updateData.status  = status;  // ← on persiste le statut
+    if (req.file)          updateData.photoUrl = `/uploads/${req.file.filename}`;
+ 
+    const updatedReport = await prisma.report.update({
+      where: { id: parseInt(id) },
+      data: updateData,
+    });
+ 
+    console.log("✅ Signalement modifié:", updatedReport);
+ 
+// ── Notifications socket quand l'agent passe en RESOLVED ─────────────────
+if (status === 'RESOLVED') {
+  const io = getIo();
+  
+  // ← déclarez citizenId ICI en premier
+  const citizenId = existingReport.userId;
+  const agentId   = req.userId;
+
+  console.log("🔍 ConnectedUsers au moment du RESOLVED:", connectedUsers);
+  console.log("🔍 citizenId recherché:", citizenId);
+  console.log("🔍 citizenSocketId trouvé:", connectedUsers[citizenId]);
+
+  const agent = await prisma.user.findUnique({
+    where: { id: agentId },
+    select: { firstName: true, lastName: true },
+  });
+  const agentName = agent
+    ? `${agent.firstName} ${agent.lastName}`.trim()
+    : 'Un agent';
+
+  const payload = {
+    signalementId : updatedReport.id,
+    status        : 'RESOLVED',
+    type          : updatedReport.type,
+    lieu          : updatedReport.lieu || null,
+    agentName,
+    citizenId,
+    citizenName   : existingReport.user
+      ? `${existingReport.user.firstName} ${existingReport.user.lastName}`.trim()
+      : 'Citoyen inconnu',
+  };
+
+  if (io) {
+    io.to('MANAGER').emit('signalement_resolu_manager', payload);
+    console.log(`📢 [SOCKET] signalement_resolu_manager émis → room MANAGER`);
+  }
+}
+    res.json(updatedReport);
+ 
+  } catch (err) {
+    console.error("❌ Erreur modification signalement:", err.message);
+    res.status(500).json({ error: 'Erreur modification signalement', details: err.message });
+  }
+});
+
+app.get('/notifications', authMiddleware, async (req, res) => {
+  try {
+    const notifications = await prisma.notification.findMany({
+      where  : { userId: req.userId, read: false },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(notifications);
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur récupération notifications' });
+  }
+});
+
+app.post('/signalements/:id/notifier-citoyen', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+  const { message, citizenId } = req.body;
+  try {
+    const io = getIo();
+    const citizenSocketId = connectedUsers[parseInt(citizenId)];
+    
+    if (io && citizenSocketId) {
+      io.to(citizenSocketId).emit('message_admin', {
+        signalementId : parseInt(req.params.id),
+        status        : 'RESOLVED',
+        message       : message,
+      });
+    }
+    res.json({ success: true, online: !!citizenSocketId });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur notification citoyen' });
+  }
+});
+ 
+app.patch('/notifications/:id/read', authMiddleware, async (req, res) => {
+  try {
+    await prisma.notification.update({
+      where: { id: parseInt(req.params.id) },
+      data : { read: true },
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur mise à jour notification' });
+  }
+});
+// ─────────────────────────────────────────────────────────────────────────────
+// TOURNÉES
+// ─────────────────────────────────────────────────────────────────────────────
+app.get('/tournees', authMiddleware, authorize(['ADMIN', 'MANAGER', 'AGENT']), async (req, res) => {
+  try {
+    const where = req.userRole === 'AGENT' ? { agentId: req.userId } : {};
+    const tournees = await prisma.route.findMany({
+      where,
+      include: { 
+        agent: { select: { firstName: true, lastName: true } }, 
+        stops: { include: { container: true }, orderBy: { order: 'asc' } }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(tournees);
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur récupération tournées' });
+  }
+});
+
+app.post('/tournees', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+  const { agentId, name, startTime, endTime } = req.body;
+
+  if (!agentId)
+    return res.status(400).json({ error: 'agentId est obligatoire' });
+
+  try {
+    const route = await prisma.route.create({
+      data: {
+        agentId: parseInt(agentId),
+        name: name || 'Route sans nom',
+        startTime: startTime ? new Date(startTime) : null,
+        endTime: endTime ? new Date(endTime) : null,
+      },
+    });
+    res.status(201).json(route);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur création tournée' });
+  }
+});
+
+app.put('/tournees/:id', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+  const { id } = req.params;
+  const { agentId, startTime, endTime, name } = req.body;
+
+  try {
+    const updateData = {};
+    if (agentId) updateData.agentId = parseInt(agentId);
+    if (startTime) updateData.startTime = new Date(startTime);
+    if (endTime) updateData.endTime = new Date(endTime);
+    if (name) updateData.name = name;
+
+    const updatedRoute = await prisma.route.update({
+      where: { id: parseInt(id) },
+      data: updateData,
+    });
+
+    res.json(updatedRoute);
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: 'Erreur lors de la mise à jour de la tournée' });
+  }
+});
+
+app.delete('/tournees/:id', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+  const { id } = req.params;
+  try {
+    await prisma.route.delete({
+      where: { id: parseInt(id) },
+    });
+    res.json({ message: 'Tournée supprimée avec succès' });
+  } catch (err) {
+    console.error(err);
+    res.status(400).json({ error: 'Erreur lors de la suppression de la tournée' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GAMIFICATION
+// ─────────────────────────────────────────────────────────────────────────────
+app.get('/gamification', authMiddleware, async (req, res) => {
+  try {
+    // 1. Vérifier que l'utilisateur existe
+    const userExists = await prisma.user.findUnique({
+      where: { id: req.userId }
+    });
+
+    if (!userExists) {
+      return res.status(401).json({ 
+        error: 'Session invalide. Veuillez vous reconnecter.' 
+      });
+    }
+
+    // 2. Chercher ou créer la gamification
+    let gamification = await prisma.gamification.findFirst({
+      where: { userId: req.userId },
+    });
+    
+    if (!gamification) {
+      gamification = await prisma.gamification.create({
+        data: { 
+          userId: req.userId, 
+          points: 0, 
+          level: 1, 
+          badges: [] 
+        },
+      });
+    }
+    
+    res.json(gamification);
+  } catch (err) {
+    console.error('❌ Erreur gamification:', err);
+    res.status(500).json({ error: 'Erreur serveur', details: err.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DASHBOARD ADMIN
+// ─────────────────────────────────────────────────────────────────────────────
+app.get('/dashboard/admin', authMiddleware, authorize(['ADMIN']), async (req, res) => {
+  try {
+    const [agents, containers, tournees, signalements, signalements_pending] = await Promise.all([
+      prisma.user.count({ where: { role: 'AGENT' } }),
+      prisma.container.count(),
+      prisma.route.count(),
+      prisma.report.count(),
+      prisma.report.count({ where: { status: 'PENDING' } }),
+    ]);
+    res.json({ agents, containers, tournees, signalements, signalements_pending });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur récupération stats dashboard' });
+  }
+});
+
+// ─── AUTH ME ─────────────────────────────────────────────────────────────────
+app.get('/auth/me', authMiddleware, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.userId },
+      include: { gamifications: true },
+    });
+    if (!user) return res.status(404).json({ error: 'Utilisateur introuvable' });
+    
+    const gamification = user.gamifications?.[0] || { points: 0, level: 1, badges: [] };
+    const { password, ...safeUser } = user;
+    
+    res.json({
+      ...safeUser,
+      points: gamification.points,
+      level:  gamification.level,
+      badges: gamification.badges,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─── PROFIL : Mise à jour infos personnelles ─────────────────────────────────
+app.put('/auth/profile', authMiddleware, async (req, res) => {
+  const { firstName, lastName, email, phone, address, bio } = req.body;
+  try {
+    const updateData = {};
+    if (firstName !== undefined) updateData.firstName = firstName;
+    if (lastName  !== undefined) updateData.lastName  = lastName;
+    if (email     !== undefined) updateData.email     = email;
+    if (phone     !== undefined) updateData.phone     = phone;
+    if (address   !== undefined) updateData.address   = address;
+    if (bio       !== undefined) updateData.bio       = bio;
+
+    const updated = await prisma.user.update({
+      where: { id: req.userId },
+      data: updateData,
+      include: { gamifications: true },
+    });
+
+    const { password, ...safeUser } = updated;
+    const gamification = updated.gamifications?.[0] || { points: 0, level: 1, badges: [] };
+    res.json({
+      ...safeUser,
+      points: gamification.points,
+      level:  gamification.level,
+      badges: gamification.badges,
+    });
+  } catch (err) {
+    console.error(err);
+    if (err.code === 'P2002') return res.status(400).json({ error: 'Cet email est déjà utilisé.' });
+    res.status(500).json({ error: 'Erreur lors de la mise à jour.' });
+  }
+});
+
+// ─── PROFIL : Changement de mot de passe ─────────────────────────────────────
+app.put('/auth/change-password', authMiddleware, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword)
+    return res.status(400).json({ error: 'Les deux mots de passe sont requis.' });
+  if (newPassword.length < 8)
+    return res.status(400).json({ error: 'Le nouveau mot de passe doit faire au moins 8 caractères.' });
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user) return res.status(404).json({ error: 'Utilisateur introuvable.' });
+
+    const valid = await bcrypt.compare(currentPassword, user.password);
+    if (!valid) return res.status(401).json({ error: 'Mot de passe actuel incorrect.' });
+
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({ where: { id: req.userId }, data: { password: hashed } });
+    res.json({ message: 'Mot de passe modifié avec succès.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur lors du changement.' });
+  }
+});
+
+// ─── PROFIL : Upload avatar ───────────────────────────────────────────────────
+app.post('/auth/avatar', authMiddleware, upload.single('avatar'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Aucun fichier reçu.' });
+  try {
+    const avatarUrl = `/uploads/${req.file.filename}`;
+    await prisma.user.update({ where: { id: req.userId }, data: { avatar: avatarUrl } });
+    res.json({ avatarUrl });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur lors de l\'upload.' });
+  }
+});
+
+// ─── 2FA : Setup (générer QR code) ───────────────────────────────────────────
+app.post('/auth/2fa/setup', authMiddleware, async (req, res) => {
+  try {
+    // Import speakeasy dynamiquement
+    const speakeasy = (await import('speakeasy')).default;
+    const QRCode    = (await import('qrcode')).default;
+
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user) return res.status(404).json({ error: 'Utilisateur introuvable.' });
+
+    const secret = speakeasy.generateSecret({
+      name: `EcoTrack (${user.email})`,
+      length: 20,
+    });
+
+    await prisma.user.update({
+      where: { id: req.userId },
+      data: { twoFactorSecret: secret.base32, twoFactorEnabled: true },
+    });
+
+    const qrCode = await QRCode.toDataURL(secret.otpauth_url);
+    res.json({ qrCode, secret: secret.base32 });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur lors de l\'activation 2FA.' });
+  }
+});
+
+// ─── 2FA : Désactiver ────────────────────────────────────────────────────────
+app.post('/auth/2fa/disable', authMiddleware, async (req, res) => {
+  try {
+    await prisma.user.update({
+      where: { id: req.userId },
+      data: { twoFactorEnabled: false, twoFactorSecret: null },
+    });
+    res.json({ message: '2FA désactivé avec succès.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur lors de la désactivation 2FA.' });
+  }
+});
+
+// ─── 2FA : Vérifier code ─────────────────────────────────────────────────────
+app.post('/auth/2fa/verify', async (req, res) => {
+  const { tempToken, token } = req.body;
+  if (!tempToken || !token)
+    return res.status(400).json({ error: 'Token et code requis.' });
+  try {
+    const speakeasy = (await import('speakeasy')).default;
+    const payload   = jwt.verify(tempToken, SECRET_KEY);
+    if (payload.type !== '2fa') return res.status(401).json({ error: 'Token invalide.' });
+
+    const user = await prisma.user.findUnique({ where: { id: payload.userId } });
+    if (!user || !user.twoFactorSecret)
+      return res.status(401).json({ error: '2FA non configuré.' });
+
+    const valid = speakeasy.totp.verify({
+      secret: user.twoFactorSecret,
+      encoding: 'base32',
+      token,
+      window: 1,
+    });
+    if (!valid) return res.status(401).json({ error: 'Code 2FA invalide ou expiré.' });
+
+    const finalToken = jwt.sign({ userId: user.id, role: user.role }, SECRET_KEY, { expiresIn: '7d' });
+    res.json({
+      token: finalToken,
+      role: user.role,
+      id: user.id,
+      name: `${user.firstName} ${user.lastName}`,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(401).json({ error: 'Token invalide ou expiré.' });
+  }
+});
+
+// ─── SESSIONS : Révoquer toutes les sessions ──────────────────────────────────
+// (Simple : on génère un nouveau salt pour invalider tous les anciens tokens)
+app.post('/auth/sessions/revoke-all', authMiddleware, async (req, res) => {
+  try {
+    // On met à jour le champ updatedAt pour invalider les anciens tokens côté client
+    await prisma.user.update({
+      where: { id: req.userId },
+      data: { updatedAt: new Date() },
+    });
+    res.json({ message: 'Toutes les sessions ont été révoquées.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur lors de la révocation des sessions.' });
+  }
+});
+
+// ─── COMPTE : Supprimer son compte ───────────────────────────────────────────
+app.delete('/auth/account', authMiddleware, async (req, res) => {
+  try {
+    await prisma.user.delete({ where: { id: req.userId } });
+    res.json({ message: 'Compte supprimé avec succès.' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur lors de la suppression du compte.' });
+  }
+});
+
+// ─── MISSIONS ─────────────────────────────────────────────────────────────────
+app.get('/missions', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+  try {
+    const missions = await prisma.mission.findMany({
+      include: {
+        agent: { select: { id: true, firstName: true, lastName: true, email: true } },
+        admin: { select: { id: true, firstName: true, lastName: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(missions);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur récupération missions.' });
+  }
+});
+
+app.get('/missions/mes-missions', authMiddleware, async (req, res) => {
+  try {
+    const missions = await prisma.mission.findMany({
+      where: { agentId: req.userId },
+      include: {
+        admin: { select: { id: true, firstName: true, lastName: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(missions);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur récupération missions.' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MISSIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+app.post('/missions', authMiddleware, async (req, res) => {
+  const { title, agentId } = req.body;
+
+try {
+  const mission = await prisma.mission.create({  // ← mission.create
+    data: {
+      title,
+      description: req.body.description || null,
+      agentId: parseInt(agentId),
+      adminId: req.userId,                       // ← admin connecté
+      status: 'PENDING',
+    },
+    include: {
+      agent: { select: { id: true, firstName: true, lastName: true } },
+      admin: { select: { id: true, firstName: true, lastName: true } },
+    }
+  });
+  res.status(201).json(mission);
+} catch (err) {
+  console.error("Erreur création mission:", err);
+  res.status(400).json({ error: "Impossible de créer la mission." });
+}
+});
+
+app.put('/missions/:id', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+  const { id } = req.params;
+  const { title, description, agentId, status } = req.body;
+  try {
+    const updateData = {};
+    if (title       !== undefined) updateData.title       = title;
+    if (description !== undefined) updateData.description = description;
+    if (agentId     !== undefined) updateData.agentId     = parseInt(agentId);
+    if (status      !== undefined) updateData.status      = status;
+
+    const updated = await prisma.mission.update({
+      where: { id: parseInt(id) },
+      data: updateData,
+      include: {
+        agent: { select: { id: true, firstName: true, lastName: true } },
+      },
+    });
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Mission introuvable.' });
+    res.status(500).json({ error: 'Erreur lors de la mise à jour.' });
+  }
+});
+
+app.delete('/missions/:id', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+  try {
+    await prisma.mission.delete({ where: { id: parseInt(req.params.id) } });
+    res.json({ message: 'Mission supprimée.' });
+  } catch (err) {
+    console.error(err);
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Mission introuvable.' });
+    res.status(500).json({ error: 'Erreur suppression mission.' });
+  }
+});
+
+app.patch('/missions/:id/status', authMiddleware, async (req, res) => {
+  const { status } = req.body;
+  const validStatuses = ['PENDING', 'IN_PROGRESS', 'DONE'];
+  if (!status || !validStatuses.includes(status))
+    return res.status(400).json({ error: 'Statut invalide.' });
+  try {
+    const updated = await prisma.mission.update({
+      where: { id: parseInt(req.params.id) },
+      data: { status },
+    });
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur mise à jour statut.' });
+  }
+});
+
+// ─── ROUTES (tournées) : routes manquantes ────────────────────────────────────
+app.get('/routes', authMiddleware, authorize(['ADMIN', 'MANAGER', 'AGENT']), async (req, res) => {
+  try {
+    const { status } = req.query;
+    const where = {};
+    if (req.userRole === 'AGENT') where.agentId = req.userId;
+    if (status) where.status = status;
+
+    const routes = await prisma.route.findMany({
+      where,
+      include: {
+        stops: {
+          include: { container: true },
+          orderBy: { order: 'asc' },
+        },
+        agent: { select: { id: true, firstName: true, lastName: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json(routes);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur récupération routes.' });
+  }
+});
+
+app.post('/routes/optimize', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+  const { depot, fillThreshold = 70, agentId, name } = req.body;
+  if (!depot?.lat || !depot?.lng)
+    return res.status(400).json({ error: 'Le dépôt (lat/lng) est obligatoire.' });
+  if (!agentId)
+    return res.status(400).json({ error: 'L\'agent est obligatoire.' });
+  try {
+    const { optimizeRoute } = await import('./services/routeOptimizer.js');
+    const containersRaw = await prisma.container.findMany({
+      where: { fillLevel: { gte: parseFloat(fillThreshold) } },
+      orderBy: { fillLevel: 'desc' },
+    });
+
+    if (containersRaw.length === 0)
+      return res.json({ message: `Aucun conteneur au-dessus de ${fillThreshold}%`, route: null, containersCount: 0 });
+
+    // ✅ Mapper latitude/longitude → lat/lng pour l'algorithme
+    const containers = containersRaw.map(c => ({
+      ...c,
+      lat: parseFloat(c.latitude),
+      lng: parseFloat(c.longitude),
+    }));
+
+    const result = optimizeRoute(depot, containers);
+
+    const route = await prisma.route.create({
+      data: {
+        agentId: parseInt(agentId),
+        name: name || `Tournée ${new Date().toLocaleDateString('fr-FR')}`,
+        totalDistanceKm: parseFloat(result.totalDistanceKm),
+        fillThreshold: parseInt(fillThreshold),
+        containersCount: result.containersCount,
+        status: 'ASSIGNED',
+        stops: {
+          create: result.route.map((c, i) => ({
+            order: i + 1,
+            distanceFromPrevious: parseFloat(c.distanceFromPrevious || 0),
+            containerId: c.id,
+          })),
+        },
+      },
+      include: {
+        stops: { include: { container: true }, orderBy: { order: 'asc' } },
+        agent: { select: { id: true, firstName: true, lastName: true } },
+      },
+    });
+
+    res.status(201).json(route);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur lors de l\'optimisation.', details: err.message });
+  }
+});
+
+app.put('/routes/:id', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+  const { id } = req.params;
+  const { name, agentId, status, startTime, endTime } = req.body;
+  try {
+    const updateData = {};
+    if (name      !== undefined) updateData.name      = name;
+    if (agentId   !== undefined) updateData.agentId   = parseInt(agentId);
+    if (status    !== undefined) updateData.status    = status;
+    if (startTime !== undefined) updateData.startTime = new Date(startTime);
+    if (endTime   !== undefined) updateData.endTime   = new Date(endTime);
+
+    const updated = await prisma.route.update({
+      where: { id: parseInt(id) },
+      data: updateData,
+      include: {
+        stops: { include: { container: true }, orderBy: { order: 'asc' } },
+        agent: { select: { id: true, firstName: true, lastName: true } },
+      },
+    });
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Tournée introuvable.' });
+    res.status(500).json({ error: 'Erreur mise à jour tournée.' });
+  }
+});
+
+app.patch('/routes/:id', authMiddleware, async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  try {
+    const updated = await prisma.route.update({
+      where: { id: parseInt(id) },
+      data: { status },
+    });
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur mise à jour statut tournée.' });
+  }
+});
+
+app.delete('/routes/:id', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+  try {
+    await prisma.route.delete({ where: { id: parseInt(req.params.id) } });
+    res.json({ message: 'Tournée supprimée.' });
+  } catch (err) {
+    console.error(err);
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Tournée introuvable.' });
+    res.status(500).json({ error: 'Erreur suppression tournée.' });
+  }
+});
+
+// ─── ROUTES STOPS : Valider une collecte ─────────────────────────────────────
+app.patch('/routes/:tourId/stops/:stopId/collect', authMiddleware, authorize(['AGENT', 'ADMIN', 'MANAGER']), async (req, res) => {
+  const { tourId, stopId } = req.params;
+  try {
+    const stop = await prisma.routeStop.update({
+      where: { id: parseInt(stopId) },
+      data: { collectedAt: new Date() },
+      include: { container: true },
+    });
+
+    // Vérifier si toutes les étapes sont collectées
+    const allStops = await prisma.routeStop.findMany({
+      where: { routeId: parseInt(tourId) },
+    });
+    const allDone = allStops.every(s => s.collectedAt !== null);
+    if (allDone) {
+      await prisma.route.update({
+        where: { id: parseInt(tourId) },
+        data: { status: 'COMPLETED' },
+      });
+    }
+    res.json(stop);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur validation collecte.' });
+  }
+});
+
+// ─── CONTAINERS : Mise à jour et suppression ──────────────────────────────────
+app.put('/containers/:id', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
   const { id } = req.params;
   const { type, capacity, fillLevel, zone, latitude, longitude } = req.body;
   try {
@@ -197,233 +1399,313 @@ app.put('/containers/:id', authMiddleware, authorize(['ADMIN', 'MANAGER']), vali
     if (zone      !== undefined) updateData.zone      = zone;
     if (latitude  !== undefined) updateData.latitude  = parseFloat(latitude);
     if (longitude !== undefined) updateData.longitude = parseFloat(longitude);
+
     const updated = await prisma.container.update({ where: { id: parseInt(id) }, data: updateData });
     res.json(updated);
   } catch (err) {
-    if (err.code === 'P2025') return res.status(404).json({ error: 'Container introuvable' });
-    res.status(500).json({ error: 'Erreur mise à jour container' });
+    console.error(err);
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Conteneur introuvable.' });
+    res.status(500).json({ error: 'Erreur mise à jour conteneur.' });
   }
 });
 
 app.delete('/containers/:id', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
   try {
     await prisma.container.delete({ where: { id: parseInt(req.params.id) } });
-    res.json({ message: 'Container supprimé avec succès' });
+    res.json({ message: 'Conteneur supprimé.' });
   } catch (err) {
-    if (err.code === 'P2025') return res.status(404).json({ error: 'Container introuvable' });
-    res.status(500).json({ error: 'Erreur suppression container' });
+    console.error(err);
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Conteneur introuvable.' });
+    res.status(500).json({ error: 'Erreur suppression conteneur.' });
   }
 });
 
-// ─── Signalements ────────────────────────────────────────────────────────────
-app.get('/signalements/public', async (req, res) => {
-  try {
-    const signalements = await prisma.report.findMany({ where: { userId: null }, orderBy: { createdAt: 'desc' } });
-    res.json(signalements);
-  } catch {
-    res.status(500).json({ error: 'Erreur récupération signalements publics' });
-  }
-});
-
-app.post('/signalements/public', upload.single('photo'), async (req, res) => {
-  const { type, comment, lat, lng } = req.body;
-  try {
-    const report = await prisma.report.create({
-      data: {
-        type, comment,
-        lat: lat ? parseFloat(lat) : null,
-        lng: lng ? parseFloat(lng) : null,
-        photoUrl: req.file ? `/uploads/${req.file.filename}` : null,
-        userId: null, status: 'PENDING',
-      },
-    });
-    res.status(201).json(report);
-  } catch {
-    res.status(500).json({ error: 'Erreur création signalement public' });
-  }
-});
-
-app.get('/signalements', authMiddleware, async (req, res) => {
-  try {
-    let signalements;
-    if (req.userRole === 'CITIZEN') {
-      signalements = await prisma.report.findMany({
-        where: { userId: req.userId },
-        include: { container: { select: { id: true, type: true, zone: true } } },
-        orderBy: { createdAt: 'desc' },
-      });
-    } else {
-      signalements = await prisma.report.findMany({ orderBy: { createdAt: 'desc' } });
-    }
-    res.json(signalements);
-  } catch {
-    res.status(500).json({ error: 'Erreur récupération signalements' });
-  }
-});
-
-app.post('/signalements', authMiddleware, upload.single('photo'), async (req, res) => {
-  const { type, comment, containerId, lat, lng, lieu } = req.body;
-  if (!type) return res.status(400).json({ error: 'Le type est obligatoire' });
-  try {
-    const report = await prisma.report.create({
-      data: {
-        type, comment: comment || null,
-        lat: lat ? parseFloat(lat) : null,
-        lng: lng ? parseFloat(lng) : null,
-        lieu: lieu || null,
-        photoUrl: req.file ? `/uploads/${req.file.filename}` : null,
-        user: { connect: { id: req.userId } },
-        ...(containerId && { container: { connect: { id: parseInt(containerId) } } }),
-      },
-    });
-    res.status(201).json({ report });
-  } catch (err) {
-    res.status(500).json({ error: 'Erreur création signalement' });
-  }
-});
-
+// ─── SIGNALEMENTS : Mise à jour statut ───────────────────────────────────────
 app.patch('/signalements/:id/status', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
   const { status } = req.body;
   const validStatuses = ['PENDING', 'IN_PROGRESS', 'RESOLVED', 'REJECTED'];
   if (!status || !validStatuses.includes(status))
-    return res.status(400).json({ error: 'Statut invalide' });
+    return res.status(400).json({ error: 'Statut invalide.' });
   try {
-    const updated = await prisma.report.update({ where: { id: parseInt(req.params.id) }, data: { status } });
+    const updated = await prisma.report.update({
+      where: { id: parseInt(req.params.id) },
+      data: { status },
+    });
     res.json(updated);
   } catch (err) {
-    if (err.code === 'P2025') return res.status(404).json({ error: 'Signalement introuvable' });
-    res.status(500).json({ error: 'Erreur mise à jour statut' });
+    console.error(err);
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Signalement introuvable.' });
+    res.status(500).json({ error: 'Erreur mise à jour statut.' });
   }
 });
 
-// ─── Routes (tournées) ───────────────────────────────────────────────────────
-app.get('/routes', authMiddleware, authorize(['ADMIN', 'MANAGER', 'AGENT']), async (req, res) => {
+// ─── USERS : Gestion admin (backoffice) ──────────────────────────────────────
+app.get('/users', authMiddleware, authorize(['ADMIN']), async (req, res) => {
   try {
-    const where = req.userRole === 'AGENT' ? { agentId: req.userId } : {};
-    const routes = await prisma.route.findMany({
-      where,
-      include: {
-        stops: { include: { container: true }, orderBy: { order: 'asc' } },
-        agent: { select: { id: true, firstName: true, lastName: true } },
+    const users = await prisma.user.findMany({
+      select: {
+        id: true, firstName: true, lastName: true, email: true,
+        role: true, createdAt: true, phone: true, address: true,
+        twoFactorEnabled: true,
       },
       orderBy: { createdAt: 'desc' },
     });
-    res.json(routes);
-  } catch {
-    res.status(500).json({ error: 'Erreur récupération routes' });
-  }
-});
-
-app.post('/routes/optimize', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
-  const { depot, fillThreshold = 70, assignedToId } = req.body;
-  if (!depot?.lat || !depot?.lng)
-    return res.status(400).json({ error: 'Le dépôt (lat/lng) est obligatoire' });
-  try {
-    const containers = await prisma.container.findMany({
-      where: { fillLevel: { gte: fillThreshold } },
-      orderBy: { fillLevel: 'desc' },
-    });
-    if (containers.length === 0)
-      return res.json({ message: `Aucun conteneur au-dessus de ${fillThreshold}%`, route: [], containersCount: 0 });
-    const result = optimizeRoute(depot, containers);
-    res.status(201).json({ totalDistanceKm: result.totalDistanceKm, containersCount: result.containersCount });
+    res.json(users);
   } catch (err) {
-    res.status(500).json({ error: "Erreur lors de l'optimisation", details: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Erreur récupération utilisateurs.' });
   }
 });
 
-app.delete('/routes/:id', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+app.put('/users/:id', authMiddleware, authorize(['ADMIN']), async (req, res) => {
+  const { id } = req.params;
+  const { firstName, lastName, email, role, phone, address } = req.body;
+  const VALID_ROLES = ['ADMIN', 'MANAGER', 'AGENT', 'CITIZEN'];
+  if (role && !VALID_ROLES.includes(role))
+    return res.status(400).json({ error: 'Rôle invalide.' });
   try {
-    await prisma.route.delete({ where: { id: parseInt(req.params.id) } });
-    res.json({ message: 'Tournée supprimée' });
+    const updateData = {};
+    if (firstName !== undefined) updateData.firstName = firstName;
+    if (lastName  !== undefined) updateData.lastName  = lastName;
+    if (email     !== undefined) updateData.email     = email;
+    if (role      !== undefined) updateData.role      = role;
+    if (phone     !== undefined) updateData.phone     = phone;
+    if (address   !== undefined) updateData.address   = address;
+
+    const updated = await prisma.user.update({
+      where: { id: parseInt(id) },
+      data: updateData,
+      select: {
+        id: true, firstName: true, lastName: true, email: true,
+        role: true, phone: true, address: true, createdAt: true,
+      },
+    });
+    res.json(updated);
   } catch (err) {
-    if (err.code === 'P2025') return res.status(404).json({ error: 'Tournée introuvable' });
-    res.status(500).json({ error: 'Erreur suppression tournée' });
+    console.error(err);
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Utilisateur introuvable.' });
+    if (err.code === 'P2002') return res.status(400).json({ error: 'Email déjà utilisé.' });
+    res.status(500).json({ error: 'Erreur mise à jour utilisateur.' });
   }
 });
 
-// ─── Tournées (alias) ─────────────────────────────────────────────────────────
-app.get('/tournees', authMiddleware, authorize(['ADMIN', 'MANAGER', 'AGENT']), async (req, res) => {
+app.delete('/users/:id', authMiddleware, authorize(['ADMIN']), async (req, res) => {
   try {
-    const where = req.userRole === 'AGENT' ? { agentId: req.userId } : {};
-    const tournees = await prisma.route.findMany({
-      where,
-      include: { agent: { select: { firstName: true, lastName: true } }, containers: true },
+    await prisma.user.delete({ where: { id: parseInt(req.params.id) } });
+    res.json({ message: 'Utilisateur supprimé.' });
+  } catch (err) {
+    console.error(err);
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Utilisateur introuvable.' });
+    res.status(500).json({ error: 'Erreur suppression utilisateur.' });
+  }
+});
+
+// ─── DASHBOARD MANAGER ────────────────────────────────────────────────────────
+app.get('/dashboard/manager', authMiddleware, authorize(['MANAGER', 'ADMIN']), async (req, res) => {
+  try {
+    const [containers, signalements, routes, agents] = await Promise.all([
+      prisma.container.findMany({ orderBy: { fillLevel: 'desc' } }),
+      prisma.report.count({ where: { status: 'PENDING' } }),
+      prisma.route.count({ where: { status: { in: ['PENDING', 'ASSIGNED', 'IN_PROGRESS'] } } }),
+      prisma.user.count({ where: { role: 'AGENT' } }),
+    ]);
+    const critical = containers.filter(c => (c.fillLevel || 0) >= 90).length;
+    const warning  = containers.filter(c => (c.fillLevel || 0) >= 70 && (c.fillLevel || 0) < 90).length;
+    res.json({
+      containers: containers.length,
+      containersCritical: critical,
+      containersWarning: warning,
+      signalementsPending: signalements,
+      routesActive: routes,
+      agents,
+      containersData: containers,
     });
-    res.json(tournees);
-  } catch {
-    res.status(500).json({ error: 'Erreur récupération tournées' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur dashboard manager.' });
   }
 });
 
-// ─── Agents ───────────────────────────────────────────────────────────────────
-app.get('/agents', authMiddleware, authorize(['ADMIN']), async (req, res) => {
+// ─── LEADERBOARD ─────────────────────────────────────────────────────────────
+app.get('/leaderboard', authMiddleware, async (req, res) => {
   try {
-    const agents = await prisma.user.findMany({
-      where: { role: 'AGENT' },
-      select: { id: true, firstName: true, lastName: true, email: true, role: true },
+    const gamifications = await prisma.gamification.findMany({
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true, avatar: true, role: true } },
+      },
+      orderBy: { points: 'desc' },
+      take: 20,
     });
-    res.json(agents);
-  } catch {
-    res.status(500).json({ error: 'Erreur récupération agents' });
+    const leaderboard = gamifications.map((g, i) => ({
+      rank: i + 1,
+      userId: g.userId,
+      name: `${g.user.firstName} ${g.user.lastName}`,
+      avatar: g.user.avatar,
+      role: g.user.role,
+      points: g.points,
+      level: g.level,
+      badges: g.badges,
+    }));
+    res.json(leaderboard);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur leaderboard.' });
   }
 });
 
-// ─── Gamification ─────────────────────────────────────────────────────────────
-app.get('/gamification', authMiddleware, async (req, res) => {
+// ─── HORAIRES COLLECTE ───────────────────────────────────────────────────────
+app.get('/horaires', async (req, res) => {
+  // Horaires statiques pour l'instant (peuvent être configurés en base plus tard)
+  const horaires = [
+    { jour: 'Lundi',    zones: ['Centre', 'Nord'],   horaire: '07h00 - 12h00' },
+    { jour: 'Mardi',    zones: ['Est', 'Ouest'],      horaire: '07h00 - 12h00' },
+    { jour: 'Mercredi', zones: ['Sud', 'Centre'],     horaire: '08h00 - 13h00' },
+    { jour: 'Jeudi',    zones: ['Nord', 'Est'],       horaire: '07h00 - 12h00' },
+    { jour: 'Vendredi', zones: ['Ouest', 'Sud'],      horaire: '07h00 - 12h00' },
+    { jour: 'Samedi',   zones: ['Toutes les zones'],  horaire: '08h00 - 14h00' },
+  ];
+  res.json(horaires);
+});
+
+// ─── DEFIS ────────────────────────────────────────────────────────────────────
+app.get('/defis', authMiddleware, async (req, res) => {
+  // Défis statiques (à migrer en base de données si besoin)
+  const defis = [
+    {
+      id: 1, titre: 'Zéro débordement - Quartier Centre',
+      description: 'Signalez tous les conteneurs pleins dans le quartier Centre pendant 7 jours.',
+      pointsRecompense: 100, dateDebut: '2026-05-01', dateFin: '2026-05-31',
+      statut: 'ACTIF', participants: 42,
+    },
+    {
+      id: 2, titre: 'Champion du recyclage',
+      description: 'Effectuez 10 signalements en 1 mois pour gagner le badge Champion.',
+      pointsRecompense: 150, dateDebut: '2026-05-01', dateFin: '2026-05-31',
+      statut: 'ACTIF', participants: 28,
+    },
+    {
+      id: 3, titre: 'Éco-citoyen du mois',
+      description: 'Accumulez 200 points en signalements pour devenir Éco-citoyen du mois.',
+      pointsRecompense: 200, dateDebut: '2026-05-01', dateFin: '2026-05-31',
+      statut: 'ACTIF', participants: 15,
+    },
+  ];
+  res.json(defis);
+});
+
+app.post('/defis/:id/inscrire', authMiddleware, async (req, res) => {
+  // Enregistre la participation (points bonus)
   try {
-    const userExists = await prisma.user.findUnique({ where: { id: req.userId } });
-    if (!userExists) return res.status(401).json({ error: 'Session invalide. Veuillez vous reconnecter.' });
-    let gamification = await prisma.gamification.findFirst({ where: { userId: req.userId } });
-    if (!gamification) {
-      gamification = await prisma.gamification.create({
-        data: { userId: req.userId, points: 0, level: 1, badges: [] },
+    const gamification = await prisma.gamification.findFirst({ where: { userId: req.userId } });
+    if (gamification) {
+      await prisma.gamification.update({
+        where: { id: gamification.id },
+        data: { points: gamification.points + 5 }, // 5 points pour l'inscription
       });
     }
-    res.json(gamification);
+    res.json({ message: 'Inscription au défi réussie ! +5 points', defiId: req.params.id });
   } catch (err) {
-    res.status(500).json({ error: 'Erreur serveur', details: err.message });
+    console.error(err);
+    res.status(500).json({ error: 'Erreur lors de l\'inscription au défi.' });
   }
 });
 
-// ─── Dashboard admin ──────────────────────────────────────────────────────────
-app.get('/dashboard/admin', authMiddleware, authorize(['ADMIN']), async (req, res) => {
+// ─── DASHBOARD AGENT ──────────────────────────────────────────────────────────
+app.get('/dashboard/agent', authMiddleware, authorize(['AGENT']), async (req, res) => {
   try {
-    const [agentsCount, containersCount, tourneesCount, signalementsCount] = await Promise.all([
-      prisma.user.count({ where: { role: 'AGENT' } }),
-      prisma.container.count(),
-      prisma.route.count(),
-      prisma.report.count(),
+    const [tournees, containers] = await Promise.all([
+      prisma.route.findMany({
+        where: { agentId: req.userId },
+        include: {
+          stops: { include: { container: true } },
+        },
+      }),
+      prisma.route.findMany({
+        where: { agentId: req.userId, status: { in: ['ASSIGNED', 'IN_PROGRESS'] } },
+        include: { stops: true },
+      }),
     ]);
-    res.json({ agents: agentsCount, containers: containersCount, tournees: tourneesCount, signalements: signalementsCount });
-  } catch {
-    res.status(500).json({ error: 'Erreur récupération stats' });
+
+    const nbContainers = containers.reduce((acc, r) => acc + (r.stops?.length || 0), 0);
+
+    res.json({
+      nbTournees:   tournees.length,
+      nbContainers: nbContainers,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur dashboard agent.' });
   }
 });
 
-// ─── Missions ─────────────────────────────────────────────────────────────────
-app.get('/missions', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+// ─── MISSIONS : Terminer ──────────────────────────────────────────────────────
+app.put('/missions/:id/terminer', authMiddleware, authorize(['AGENT']), async (req, res) => {
   try {
-    const missions = await prisma.mission.findMany({
-      include: { agent: { select: { id: true, firstName: true, lastName: true } } },
-      orderBy: { createdAt: 'desc' },
+    const updated = await prisma.mission.update({
+      where: { id: parseInt(req.params.id) },
+      data: { status: 'DONE' },
     });
-    res.json(missions);
-  } catch {
-    res.status(500).json({ error: 'Erreur serveur' });
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Erreur lors de la terminaison.' });
   }
 });
 
-app.get('/missions/mes-missions', authMiddleware, async (req, res) => {
+// ─── SIGNALEMENTS : Assigner à un agent ──────────────────────────────────────
+app.put('/signalements/:id/assigner', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+  const { agentId } = req.body;
+  if (!agentId) return res.status(400).json({ error: 'agentId est obligatoire.' });
   try {
-    const missions = await prisma.mission.findMany({
-      where: { agentId: req.userId },
-      orderBy: { createdAt: 'desc' },
+    const updated = await prisma.report.update({
+      where: { id: parseInt(req.params.id) },
+      data: { 
+        assignedToId: parseInt(agentId),
+        status: 'IN_PROGRESS',
+      },
+      include: {
+        user: { select: { id: true, firstName: true, lastName: true } },
+      },
     });
-    res.json(missions);
-  } catch {
-    res.status(500).json({ error: 'Erreur serveur' });
+    res.json(updated);
+  } catch (err) {
+    console.error(err);
+    if (err.code === 'P2025') return res.status(404).json({ error: 'Signalement introuvable.' });
+    res.status(500).json({ error: 'Erreur lors de l\'assignation.' });
   }
+});
+
+app.post('/signalements/:id/message', authMiddleware, authorize(['ADMIN', 'MANAGER']), async (req, res) => {
+  const { message } = req.body;
+  if (!message) return res.status(400).json({ error: 'Message obligatoire' });
+
+  try {
+    const report = await prisma.report.findUnique({
+      where: { id: parseInt(req.params.id) },
+      include: { user: { select: { id: true } } },
+    });
+    if (!report) return res.status(404).json({ error: 'Signalement introuvable' });
+
+    const io = getIo();
+    const citizenSocketId = connectedUsers[report.user?.id];
+    if (io && citizenSocketId) {
+      io.to(citizenSocketId).emit('message_admin', {
+        signalementId : report.id,
+        status        : report.status,
+        message,
+      });
+    }
+
+    res.json({ success: true, online: !!citizenSocketId });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur envoi message', details: err.message });
+  }
+});
+
+const PORT = process.env.PORT || 8000;
+
+app.get("/", (req, res) => {
+  res.send("Ecotrack API is running 🚀");
 });
 
 export default app;
