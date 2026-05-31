@@ -29,6 +29,47 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json());
+
+// ─── SWAGGER / OpenAPI ────────────────────────────────────────────────────────
+import swaggerUi from 'swagger-ui-express';
+import { readFileSync } from 'fs';
+import { load as yamlLoad } from 'js-yaml';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = dirname(__filename);
+
+const swaggerSpec = yamlLoad(
+  readFileSync(join(__dirname, 'openapi.yaml'), 'utf8')
+);
+
+app.use(
+  '/api-docs',
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, {
+    customSiteTitle: 'EcoTrack — Documentation API',
+    customCss: `
+      .swagger-ui .topbar { background: #0f5c40; }
+      .swagger-ui .topbar-wrapper .link span { display: none; }
+      .swagger-ui .topbar-wrapper::before {
+        content: '🌿 EcoTrack API';
+        color: white;
+        font-size: 1.1rem;
+        font-weight: 700;
+        padding: 0 16px;
+      }
+    `,
+    swaggerOptions: {
+      docExpansion: 'list',
+      filter: true,
+      displayRequestDuration: true,
+      tryItOutEnabled: true,
+    },
+  })
+);
+// ─────────────────────────────────────────────────────────────────────────────
+
 app.use('/uploads', express.static('uploads'));
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'ecotrack-api' });
@@ -164,9 +205,11 @@ app.post('/signup', async (req, res) => {
 
 app.post('/auth/login', async (req, res) => {
   const { email, password } = req.body;
-  if (!email || !password)
-    return res.status(400).json({ error: 'Email et mot de passe requis' });
-
+  if (!email || !password) {
+    return res.status(400).json({
+      error: 'Email et mot de passe requis'
+    });
+  }
   try {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) return res.status(401).json({ message: 'Email ou mot de passe invalide' });
@@ -174,23 +217,13 @@ app.post('/auth/login', async (req, res) => {
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ message: 'Email ou mot de passe invalide' });
 
-    // ── Si 2FA activé : renvoyer un tempToken au lieu du vrai token ──────────
-    if (user.twoFactorEnabled && user.twoFactorSecret) {
-      const tempToken = jwt.sign(
-        { userId: user.id, role: user.role, type: '2fa' },
-        SECRET_KEY,
-        { expiresIn: '5m' }
-      );
-      return res.json({ requires2FA: true, tempToken });
-    }
-
-    // ── Sinon : connexion normale ─────────────────────────────────────────────
     const token = jwt.sign({ userId: user.id, role: user.role }, SECRET_KEY, { expiresIn: '7d' });
+
     res.json({
-      id    : user.id,
-      name  : `${user.firstName} ${user.lastName}`,
-      email : user.email,
-      role  : user.role,
+      id: user.id,
+      name: `${user.firstName} ${user.lastName}`,
+      email: user.email,
+      role: user.role,
       token,
     });
   } catch (err) {
@@ -417,21 +450,8 @@ app.get('/signalements', authMiddleware, async (req, res) => {
       });
     } 
     // Si ADMIN ou MANAGER : voir tous les signalements
-else if (req.userRole === 'ADMIN' || req.userRole === 'MANAGER') {
-  signalements = await prisma.report.findMany({
-    include: {
-      user      : { select: { id: true, firstName: true, lastName: true, email: true } },
-      assignedTo: { select: { id: true, firstName: true, lastName: true } }, // ← vérifiez cette ligne
-      container : { select: { id: true, type: true, zone: true } },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
-}
-    
-    // Si AGENT : voir les signalements de sa zone (optionnel)
-    else if (req.userRole === 'AGENT') {
+    else if (req.userRole === 'ADMIN' || req.userRole === 'MANAGER') {
       signalements = await prisma.report.findMany({
-        where: { container: { zone: req.userZone } },
         include: {
           user: { select: { id: true, firstName: true, lastName: true } },
           container: { select: { id: true, type: true, zone: true } },
@@ -439,16 +459,12 @@ else if (req.userRole === 'ADMIN' || req.userRole === 'MANAGER') {
         orderBy: { createdAt: 'desc' },
       });
     }
-
+    // Si AGENT : voir les signalements de sa zone (optionnel)
     else {
       signalements = await prisma.report.findMany({
         orderBy: { createdAt: 'desc' },
-        include: {
-          user: { select: { id: true, firstName: true, lastName: true, email: true } },
-      assignedTo: { select: { id: true, firstName: true, lastName: true } },
-    },
-  });
-}
+      });
+    }
     
     res.json(signalements);
   } catch (err) {
@@ -1088,19 +1104,11 @@ app.post('/auth/sessions/revoke-all', authMiddleware, async (req, res) => {
 // ─── COMPTE : Supprimer son compte ───────────────────────────────────────────
 app.delete('/auth/account', authMiddleware, async (req, res) => {
   try {
-    // Supprimer toutes les données liées
-    await prisma.notification.deleteMany({ where: { userId: req.userId } });
-    await prisma.mission.deleteMany({ where: { adminId: req.userId } }); // ← ajout
-    await prisma.mission.deleteMany({ where: { agentId: req.userId } }); // ← si l'agent a aussi des missions
-    await prisma.report.deleteMany({ where: { userId: req.userId } });
-    await prisma.gamification.deleteMany({ where: { userId: req.userId } });
-
     await prisma.user.delete({ where: { id: req.userId } });
-
     res.json({ message: 'Compte supprimé avec succès.' });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Erreur lors de la suppression du compte.', details: err.message });
+    res.status(500).json({ error: 'Erreur lors de la suppression du compte.' });
   }
 });
 
@@ -1605,32 +1613,24 @@ app.post('/defis/:id/inscrire', authMiddleware, async (req, res) => {
 // ─── DASHBOARD AGENT ──────────────────────────────────────────────────────────
 app.get('/dashboard/agent', authMiddleware, authorize(['AGENT']), async (req, res) => {
   try {
-    const [tournees, signalements] = await Promise.all([
+    const [tournees, containers] = await Promise.all([
       prisma.route.findMany({
         where: { agentId: req.userId },
         include: {
           stops: { include: { container: true } },
         },
-        orderBy: { createdAt: 'desc' },
       }),
-      prisma.report.findMany({
-        where: { assignedToId: req.userId },
-        include: {
-          user: { select: { id: true, firstName: true, lastName: true } },
-        },
-        orderBy: { createdAt: 'desc' },
+      prisma.route.findMany({
+        where: { agentId: req.userId, status: { in: ['ASSIGNED', 'IN_PROGRESS'] } },
+        include: { stops: true },
       }),
     ]);
 
-    const activeContainers = tournees
-      .filter(r => ['ASSIGNED', 'IN_PROGRESS'].includes(r.status))
-      .reduce((acc, r) => acc + (r.stops?.length || 0), 0);
+    const nbContainers = containers.reduce((acc, r) => acc + (r.stops?.length || 0), 0);
 
     res.json({
-      nbTournees   : tournees.length,
-      nbContainers : activeContainers,
-      tournees,           // ← liste complète
-      signalements,       // ← signalements assignés à cet agent
+      nbTournees:   tournees.length,
+      nbContainers: nbContainers,
     });
   } catch (err) {
     console.error(err);

@@ -1,4 +1,0 @@
--- AlterTable
-ALTER TABLE "Report" ADD COLUMN     "lat" DOUBLE PRECISION,
-ADD COLUMN     "lng" DOUBLE PRECISION,
-ADD COLUMN     "photoUrl" TEXT;
