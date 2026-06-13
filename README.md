@@ -174,7 +174,7 @@ REACT_APP_API_URL=http://localhost:8000
 
 ## 👩‍💻 Auteur
 
-**Nesrine Berra** — Master 2 Développement Web — INGETIS 2026
+**Nesrine Berra** — Master 2 Développement Web — ITIS 2026
 
 ---
 
