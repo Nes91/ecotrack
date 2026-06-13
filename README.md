@@ -2,7 +2,7 @@
 
 ![CI](https://github.com/Nes91/ecotrack/actions/workflows/ci.yml/badge.svg)
 
-> Projet de fin d'études — Master 2 Développement Web — INGETIS 2026
+> Projet de fin d'études — Master 2 Développement Web — ITIS 2026
 
 ---
 
