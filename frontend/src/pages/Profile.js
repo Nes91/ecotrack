@@ -248,7 +248,7 @@ export default function ProfilePage({ user: initialUser }) {
     setForm(f);
     setSavedForm(f);
     setAvatarSrc(data.avatar || data.avatarUrl || null);
-    setTwoFA(!!data.twoFAEnabled);
+    setTwoFA(!!data.twoFactorEnabled);
   };
 
   // ── Fetch /auth/me à chaque montage — source unique de vérité ──
@@ -336,7 +336,6 @@ export default function ProfilePage({ user: initialUser }) {
       const res = await API.post("/auth/2fa/setup");
       setQrCode(res.data.qrCode);
       setModal("twofa-qr");
-      setTwoFA(true);
       showToast("2FA activé !");
     } catch (err) {
       showToast(err.response?.data?.error || "Erreur lors de l'activation.", "error");

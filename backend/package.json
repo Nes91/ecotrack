@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "start": "node app.js",
-    "dev": "nodemon app.js",
+    "dev": "nodemon server.js",
     "test": "node --experimental-vm-modules node_modules/.bin/jest --forceExit --passWithNoTests"
   },
   "jest": {

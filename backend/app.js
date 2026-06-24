@@ -206,19 +206,27 @@ app.post('/signup', async (req, res) => {
 app.post('/auth/login', async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
-    return res.status(400).json({
-      error: 'Email et mot de passe requis'
-    });
+    return res.status(400).json({ error: 'Email et mot de passe requis' });
   }
   try {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) return res.status(401).json({ message: 'Email ou mot de passe invalide' });
-
+    
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return res.status(401).json({ message: 'Email ou mot de passe invalide' });
 
-    const token = jwt.sign({ userId: user.id, role: user.role }, SECRET_KEY, { expiresIn: '7d' });
+    // ✅ Vérifier si la 2FA est activée
+    if (user.twoFactorEnabled && user.twoFactorSecret) {
+      const tempToken = jwt.sign(
+        { userId: user.id, type: '2fa' },
+        SECRET_KEY,
+        { expiresIn: '5m' }
+      );
+      return res.json({ requires2FA: true, tempToken });
+    }
 
+    // Pas de 2FA — connexion directe
+    const token = jwt.sign({ userId: user.id, role: user.role }, SECRET_KEY, { expiresIn: '7d' });
     res.json({
       id: user.id,
       name: `${user.firstName} ${user.lastName}`,
@@ -1025,7 +1033,7 @@ app.post('/auth/2fa/setup', authMiddleware, async (req, res) => {
 
     await prisma.user.update({
       where: { id: req.userId },
-      data: { twoFactorSecret: secret.base32, twoFactorEnabled: true },
+      data: { twoFactorSecret: secret.base32, twoFactorEnabled: false },
     });
 
     const qrCode = await QRCode.toDataURL(secret.otpauth_url);
@@ -1071,6 +1079,11 @@ app.post('/auth/2fa/verify', async (req, res) => {
       window: 1,
     });
     if (!valid) return res.status(401).json({ error: 'Code 2FA invalide ou expiré.' });
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { twoFactorEnabled: true },
+    });
 
     const finalToken = jwt.sign({ userId: user.id, role: user.role }, SECRET_KEY, { expiresIn: '7d' });
     res.json({
