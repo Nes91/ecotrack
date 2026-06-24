@@ -153,8 +153,8 @@ REACT_APP_API_URL=http://localhost:8000
 
 | Service | URL |
 |---|---|
-| Frontend (Vercel) | `https://ecotrack.vercel.app` |
-| Backend (Render) | `https://ecotrack-api.onrender.com` |
+| Frontend (Vercel) | `https://ecotrack-five.vercel.app` |
+| Backend (Render) | `https://ecotrack-api-bq3c.onrender.com` |
 
 ---
 
@@ -174,7 +174,7 @@ REACT_APP_API_URL=http://localhost:8000
 
 ## 👩‍💻 Auteur
 
-**Nesrine Berra** — Master 2 Développement Web — ITIS 2026
+**Nesrine BERRA** — Master 2 Développement Web — ITIS 2026
 
 ---
 
